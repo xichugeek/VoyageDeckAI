@@ -13,16 +13,17 @@ const candidateStatus = {
 const eventLevel = { info: 'INFO', success: 'OK', warn: 'WARN', error: 'ERR' }
 const orderStatus = { created: '已创建', shipped: '已发货', refunded: '已退款', canceled: '已取消' }
 
-export function CandidatePanel({ run, onInspect }: { run: Run; onInspect?: (id: string) => void }) {
+export function CandidatePanel({ run }: { run: Run }) {
   const [inspectedId, setInspectedId] = useState<string>()
   const candidate = run.candidates.find(({ id }) => id === inspectedId)
     ?? run.candidates.find(({ status }) => status === 'selected')
     ?? run.candidates[0]
+  const rejected = run.candidates.filter(({ status }) => status === 'rejected').length
 
   return <section className="cockpit-panel candidate-panel" aria-label="候选商品">
     <div className="cp-head">
       <h2><Radar size={15} />候选商品</h2>
-      <span className="cp-head-note">{run.candidates.length} 件虚构商品</span>
+      <span className="cp-head-note">{run.candidates.length} 件虚构商品{rejected > 0 && <> · <span className="cp-danger">{rejected} 件已淘汰</span></>}</span>
     </div>
     {candidate ? <>
       <div className="cp-candidate-focus">
@@ -38,7 +39,7 @@ export function CandidatePanel({ run, onInspect }: { run: Run; onInspect?: (id: 
       </dl>
       <p className="cp-candidate-reason"><ChevronRight size={13} />{candidate.reason ?? '启动演示后生成选品判断。'}</p>
       <div className="cp-candidate-choices" aria-label="查看候选商品">
-        {run.candidates.map((item) => <button type="button" key={item.id} onClick={() => { setInspectedId(item.id); onInspect?.(item.id) }} aria-label={`${item.name} · ${candidateStatus[item.status]}`} aria-pressed={item.id === candidate.id} className={`cp-candidate-${item.status}`}>
+        {run.candidates.map((item) => <button type="button" key={item.id} onClick={() => setInspectedId(item.id)} aria-label={`${item.name} · ${candidateStatus[item.status]}`} aria-pressed={item.id === candidate.id} className={`cp-candidate-${item.status}`}>
           <span className="cp-choice-dot" />{item.sku}
         </button>)}
       </div>

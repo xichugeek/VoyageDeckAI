@@ -110,7 +110,7 @@
 
 .cp-candidate-values dt, .cp-order-facts dt { color: var(--cp-muted); font-size: 11px; line-height: 1.35; }
 .cp-candidate-values dd, .cp-order-facts dd { margin: 2px 0 0; font: 600 13px var(--cp-mono); overflow-wrap: anywhere; }
-.cp-candidate-values .cp-danger { color: var(--cp-error); }
+.cp-danger { color: var(--cp-error); }
 .cp-candidate-values .cp-gain { color: var(--cp-positive); }
 
 .cp-candidate-reason {

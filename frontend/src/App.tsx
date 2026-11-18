@@ -2,7 +2,7 @@ import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, Chevro
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { CandidatePanel, OrderPanel, TerminalPanel, TrendPanel } from './CockpitPanels'
-import { createRun, metrics, previewRun, products, reduceRun } from './demo'
+import { canRetry, createRun, metrics, previewRun, products, reduceRun } from './demo'
 import { agents, localTime, markets, money, percent, runStatusLabel, scenarios, taskStatusLabel } from './model'
 import type { Action, Config, Run, Task } from './model'
 import { Dialog, Logo, PanelTitle, Radar, RoleIcon, tint } from './ui'
@@ -79,7 +79,7 @@ function MetricsRow({ run, inspect }: { run: Run; inspect: () => void }) {
   ]
   return <section className="metrics" aria-label="模拟经营指标">
     {cards.map(({ name, code, value, icon: Icon, color }, index) => <button className="metric" key={code} style={tint(color)} onClick={inspect} aria-label={`${name} ${value}，查看计算口径`}>
-      <span className="metric-label"><Icon size={15} /> {name}</span><strong className="metric-value">{value}{index === 5 && <small> / 06</small>}</strong><span className="metric-code">{code} <ArrowUpRight size={12} /></span>
+      <span className="metric-label"><Icon size={15} /> {name}</span><strong className="metric-value" key={value}>{value}{index === 5 && <small> / 06</small>}</strong><span className="metric-code">{code} <ArrowUpRight size={12} /></span>
     </button>)}
   </section>
 }
@@ -119,6 +119,17 @@ function AgentRoster({ run, inspect }: { run: Run; inspect: (task: Task) => void
   </aside>
 }
 
+function Milestones({ run, inspect }: { run: Run; inspect: (task: Task) => void }) {
+  const reached = run.tasks.filter(task => task.startedAt)
+  if (!reached.length) return null
+  return <section className="milestones panel" aria-label="任务里程碑"><h2><Timer size={15} /> 任务时间轴</h2><ol>
+    {reached.map(task => {
+      const agent = agents.find(item => item.id === task.agent)!
+      return <li key={task.id} style={tint(agent.color)}><button onClick={() => inspect(task)}><i /> <strong>{agent.name}</strong> <time dateTime={task.endedAt || task.startedAt}>{localTime((task.endedAt || task.startedAt)!)}</time></button></li>
+    })}
+  </ol></section>
+}
+
 function NewTaskForm({ current, submit }: { current: Config; submit: (config: Config) => void }) {
   const [scenario, setScenario] = useState(current.scenario)
   const [preferred, setPreferred] = useState(current.preferredId)
@@ -146,8 +157,24 @@ function NewTaskForm({ current, submit }: { current: Config; submit: (config: Co
   </form>
 }
 
+const factLabels: Record<string, string> = {
+  data_source: '数据来源', status: '状态', market: '目标市场', category: '类目', preferred: '首选候选',
+  planned_budget: '模拟预算', selected: '已选商品', title: '商品标题', description: '商品描述', sku: 'SKU',
+  attempt: '尝试编号', risk: '风险', price: '售价', cost: '成本', score: '评分', reason: '依据', id: '记录 ID',
+  name: '名称', englishName: '英文名称', draft: '草稿', market_language: '语言', order_id: '订单',
+}
+
+function FactValue({ value }: { value: unknown }): ReactNode {
+  if (Array.isArray(value)) return <ol className="fact-array">{value.map((item, index) => <li key={index}><FactValue value={item} /></li>)}</ol>
+  if (value && typeof value === 'object') return <dl className="fact-grid">{Object.entries(value).filter(([, item]) => item !== undefined).map(([key, item]) => <div key={key}><dt>{factLabels[key] || key.replaceAll('_', ' ')}</dt><dd><FactValue value={item} /></dd></div>)}</dl>
+  if (value === 'demo_simulated') return '虚构场景 · 模拟数据'
+  if (value === 'draft') return '草稿'
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  return value == null ? '—' : String(value)
+}
+
 function Output({ data, label }: { data: Record<string, unknown>; label: string }) {
-  return <section className="detail-output"><h3>{label}</h3><pre>{JSON.stringify(data, null, 2)}</pre></section>
+  return <section className="detail-output"><h3>{label}</h3><FactValue value={data} /></section>
 }
 
 function download(content: string, filename: string) {
@@ -170,12 +197,13 @@ function TaskDetails({ run, task }: { run: Run; task: Task }) {
   const approvals = run.approvals.filter(item => item.taskId === task.id)
   const duration = task.startedAt ? Math.max(0, (Date.parse(task.endedAt || run.updatedAt) - Date.parse(task.startedAt)) / 1000) : undefined
   return <div className="drawer-content">
-    <div className="detail-meta"><span>{taskStatusLabel[task.status]}</span><span>尝试 {task.attempts} 次</span><span>{duration === undefined ? '待执行' : `${duration.toFixed(1)} 秒`}</span><code>{task.id}</code></div>
+    <div className="detail-meta"><span>{task.status === 'running' && run.status === 'paused' ? '已暂停' : taskStatusLabel[task.status]}</span><span>尝试 {task.attempts} 次</span><span>{duration === undefined ? '待执行' : `${duration.toFixed(1)} 秒`}</span><code>{task.id}</code></div>
     <p>{task.summary || '等待前序岗位完成。'} {task.failure}</p>
     {task.input && <Output data={task.input} label="执行输入" />}
     {task.output && <><Output data={task.output} label="模拟产物" /><CopyButton label="复制产物" text={JSON.stringify(task.output, null, 2)} /></>}
+    {!!task.attemptHistory?.length && <><h3>执行尝试</h3><ul className="detail-log">{task.attemptHistory.map(attempt => <li key={attempt.number}>第 {attempt.number} 次 · <time>{localTime(attempt.startedAt)}</time> · {attempt.failure || (attempt.endedAt ? '已结束' : '尚未结束')}</li>)}</ul></>}
     <h3>岗位日志</h3><ul className="detail-log">{run.events.filter(evt => evt.taskId === task.id).map(evt => <li key={evt.seq}><time>{localTime(evt.at)}</time> {evt.message}</li>)}</ul>
-    {!!approvals.length && <><h3>审批记录</h3><ul className="detail-log">{approvals.map((entry, index) => <li key={index}><time>{localTime(entry.at)}</time> {entry.decision === 'approved' ? '批准' : '驳回'}模拟产物</li>)}</ul></>}
+    {!!approvals.length && <><h3>审批记录</h3><ul className="detail-log">{approvals.map((entry, index) => <li key={entry.id || index}><time>{localTime(entry.at)}</time> {entry.decision === 'approved' ? '批准' : '驳回'}模拟产物{entry.attempt && ` · 第 ${entry.attempt} 次尝试`}</li>)}</ul></>}
   </div>
 }
 
@@ -276,17 +304,19 @@ export function App() {
             <span className="decision-icon">{approval || run.status === 'failed' ? <TriangleAlert size={17} /> : <Activity size={17} />}</span>
             <div><strong>{approval ? (approval.agent === 'ads' ? '待审 · 模拟广告预算' : '待审 · 模拟上架草稿') : '阶段动态'}</strong><span>{summary}</span></div>
             <div className="decision-actions">
-              {approval && <><button className="btn" onClick={() => inspect(approval)}>查看产物</button><button className="btn btn-danger" onClick={() => dispatch({ type: 'reject', taskId: approval.id })}>驳回</button><button className="btn btn-primary" onClick={() => dispatch({ type: 'approve', taskId: approval.id })}>{approval.agent === 'ads' ? '批准模拟预算' : '批准模拟草稿'}</button></>}
+              {approval && <><button className="btn" onClick={() => inspect(approval)}>查看产物</button><button className="btn btn-danger" onClick={() => dispatch({ type: 'reject', taskId: approval.id, attempt: approval.attempts })}>驳回</button><button className="btn btn-primary" onClick={() => dispatch({ type: 'approve', taskId: approval.id, attempt: approval.attempts })}>{approval.agent === 'ads' ? '批准模拟预算' : '批准模拟草稿'}</button></>}
+              {canRetry(run) && <button className="btn btn-primary" onClick={() => dispatch({ type: 'retry' })}><RotateCcw size={15} /> 重试模拟岗位</button>}
               {run.status === 'failed' && <button className="btn" onClick={() => setView('report')}>查看失败复盘 <ArrowRight size={14} /></button>}
               {!terminal && !approval && activeTask && <button className="btn subtle-btn" onClick={() => inspect(activeTask)}>岗位详情 <ArrowRight size={14} /></button>}
             </div>
           </section>
-          <div className="panel-pair" id="telemetry"><CandidatePanel run={run} /><TerminalPanel run={run} /></div>
+          <div className="panel-pair" id="telemetry" key={run.id}><CandidatePanel run={run} /><TerminalPanel run={run} /></div>
           <div className="panel-pair analytics-pair"><TrendPanel run={run} /><OrderPanel run={run} /></div>
+          <Milestones run={run} inspect={inspect} />
         </div>
         <AgentRoster run={run} inspect={inspect} />
       </div>
-      <footer className="console-footer"><span><span className="online-dot" /> 模拟数据 · USD <span className="foot-mid">/</span> 当前浏览器会话</span><div><button className="btn" onClick={() => setView('history')}>任务历史</button>{!terminal && <button className="btn" onClick={() => setView('cancel')}><Square size={13} /> 取消任务</button>}<button className="btn" onClick={() => setView('report')}>运行记录</button></div></footer>
+      <footer className="console-footer"><span><span className="online-dot" /> 模拟数据 · USD <span className="foot-mid">/</span> 当前浏览器会话</span><div><button className="btn" onClick={() => setView('history')}>任务历史</button>{(!terminal || canRetry(run)) && <button className="btn" onClick={() => setView('cancel')}><Square size={13} /> 取消任务</button>}<button className="btn" onClick={() => setView('report')}>运行记录</button></div></footer>
     </main>
     {selectedTask && <Dialog title={`${agents.find(agent => agent.id === selectedTask.agent)?.name} · 岗位详情`} close={close} wide><TaskDetails run={run} task={selectedTask} /></Dialog>}
     {view && <Dialog title={titles[view]} close={close} wide={view === 'report'}>{modalContent}</Dialog>}

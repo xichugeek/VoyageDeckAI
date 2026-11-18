@@ -36,6 +36,7 @@ export interface Product {
   cost: number
   price: number
   score?: number
+  factors?: { demand: number; margin: number; competition: number; complianceRisk: number; supplyReliability: number }
   status: 'pending' | 'selected' | 'eligible' | 'rejected'
   reason?: string
 }
@@ -46,6 +47,16 @@ export interface RunEvent {
   level: 'info' | 'success' | 'warn' | 'error'
   message: string
   taskId?: string
+  workflowId?: string
+  dataSource?: 'demo_simulated'
+  attempt?: number
+  orderId?: string
+}
+export interface OrderEvent {
+  at: string
+  message: string
+  kind?: 'created' | 'reserved' | 'shipped' | 'stock_shortage' | 'refunded'
+  seq?: number
 }
 export interface Order {
   id: string
@@ -57,7 +68,23 @@ export interface Order {
   shipping: number
   platformFee: number
   attributed: boolean
-  events: { at: string; message: string }[]
+  events: OrderEvent[]
+  dataSource?: 'demo_simulated'
+  units?: number
+}
+export interface Stock {
+  available: number
+  reserved: number
+  shipped: number
+}
+export interface Approval {
+  taskId: string
+  decision: 'approved' | 'rejected'
+  at: string
+  id?: string
+  attempt?: number
+  outputId?: string
+  actor?: 'sandbox_visitor'
 }
 export interface Task {
   id: string
@@ -69,6 +96,7 @@ export interface Task {
   summary?: string
   input?: Record<string, unknown>
   output?: Record<string, unknown>
+  outputId?: string
   startedAt?: string
   endedAt?: string
   failure?: string
@@ -88,11 +116,13 @@ export interface Run {
   events: RunEvent[]
   snapshots: { seq: number; gmv: number; cost: number }[]
   orders: Order[]
-  approvals: { taskId: string; decision: 'approved' | 'rejected'; at: string }[]
+  approvals: Approval[]
+  inventory?: Record<string, Stock>
   adSpend: number
   otherCosts: number
   failure?: string
   checkpoint?: boolean
+  singleStep?: boolean
 }
 export interface Metrics {
   gmv: number
@@ -111,8 +141,8 @@ export interface Metrics {
   totalCost: number
   working: number
 }
-export type Action = { type: 'start' | 'pause' | 'resume' | 'step' | 'tick' | 'cancel' | 'retry' }
-  | { type: 'approve' | 'reject'; taskId: string }
+export type Action = { type: 'prepare' | 'start' | 'pause' | 'resume' | 'step' | 'tick' | 'cancel' | 'retry' }
+  | { type: 'approve' | 'reject'; taskId: string; attempt: number }
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 export const money = (cents: number) => dollars.format(cents / 100)
