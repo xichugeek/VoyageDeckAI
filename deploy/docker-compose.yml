@@ -1,0 +1,46 @@
+name: xg-voyagedeck
+
+services:
+  app:
+    image: voyagedeck-ai:${VOYAGEDECK_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    init: true
+    user: "10001:10001"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      VOYAGEDECK_API_DOCS: ${VOYAGEDECK_API_DOCS:-1}
+      VOYAGEDECK_ADMIN_PASSWORD_HASH: ${VOYAGEDECK_ADMIN_PASSWORD_HASH:-}
+      VOYAGEDECK_INSECURE_COOKIE: ${VOYAGEDECK_INSECURE_COOKIE:-0}
+      VOYAGEDECK_PROVIDER_MODE: ${VOYAGEDECK_PROVIDER_MODE:-mock}
+      VOYAGEDECK_PROVIDER_ENDPOINT: ${VOYAGEDECK_PROVIDER_ENDPOINT:-}
+      VOYAGEDECK_PROVIDER_MODEL: ${VOYAGEDECK_PROVIDER_MODEL:-mock-v1}
+      VOYAGEDECK_PROVIDER_API_KEY: ${VOYAGEDECK_PROVIDER_API_KEY:-}
+    ports:
+      - "127.0.0.1:${VOYAGEDECK_HTTP_PORT:-18288}:8080"
+    volumes:
+      - voyage-data:/data
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 4096
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+volumes:
+  voyage-data:

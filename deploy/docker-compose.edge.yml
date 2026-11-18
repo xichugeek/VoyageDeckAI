@@ -1,0 +1,20 @@
+services:
+  app:
+    ports: !reset []
+    environment:
+      VOYAGEDECK_API_DOCS: "0"
+      VOYAGEDECK_ADMIN_PASSWORD_HASH: ""
+      VOYAGEDECK_INSECURE_COOKIE: "0"
+      VOYAGEDECK_PROVIDER_MODE: mock
+      VOYAGEDECK_PROVIDER_ENDPOINT: ""
+      VOYAGEDECK_PROVIDER_MODEL: mock-v1
+      VOYAGEDECK_PROVIDER_API_KEY: ""
+    networks:
+      edge:
+        aliases:
+          - xg-voyagedeck
+
+networks:
+  edge:
+    name: xg_edge
+    external: true

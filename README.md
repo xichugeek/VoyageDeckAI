@@ -4,9 +4,11 @@
 
 ## Windows 本地启动
 
-需要 Node.js 22 和 Python 3.12。在仓库根目录使用 PowerShell：
+需要 Git、Node.js 22.13+（22.x）和 Python 3.12。在 PowerShell 中执行：
 
 ```powershell
+git clone https://github.com/xichugeek/VoyageDeckAI.git
+Set-Location VoyageDeckAI
 py -3.12 -m venv backend/.venv
 .\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
 Push-Location frontend
@@ -19,7 +21,7 @@ Pop-Location
 - 健康检查 <http://127.0.0.1:8289/api/health>
 - OpenAPI <http://127.0.0.1:8289/api/docs>
 
-在启动终端按 `Ctrl+C` 结束服务。
+在启动终端按 `Ctrl+C` 结束服务。启动日志在 `.local/backend-dev.log`。如需清理本项目的临时日志，可在服务停止后运行 `Remove-Item -LiteralPath .local/backend-dev.log -ErrorAction SilentlyContinue`。管理员历史默认保存在 `backend/data/voyagedeck.sqlite3`。
 
 ## 访客演示
 
@@ -49,20 +51,21 @@ npx.cmd playwright install chromium
 npm.cmd run test:unit
 npm.cmd run test:e2e
 npm.cmd run test:admin
+npm.cmd run typecheck
+npm.cmd run lint
 npm.cmd run build
 Pop-Location
 Push-Location backend
 .\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check app tests
 Pop-Location
 ```
 
-```mermaid
-flowchart LR
-  V[浏览器访客] --> C[React 指挥台]
-  C --> S[会话内演示引擎]
-  C --> A[FastAPI 管理接口]
-  A --> D[(SQLite)]
-  A --> P[模型 Provider]
-```
+## 文档
+
+- [验收和启动演示](docs/DEMO_GUIDE.md) · [第 031 期制作脚本](docs/EPISODE_031.md)
+- [架构](docs/ARCHITECTURE.md) · [API](docs/API.md) · [安全](docs/SECURITY.md)
+- [容器部署与回滚](deploy/README.md) · [交付报告](docs/DELIVERY_REPORT.md) · [变更记录](docs/CHANGELOG.md)
+- [许可状态](LICENSE-PENDING.md)
 
 VoyageDeck AI is a mission-control console for a simulated six-agent cross-border commerce workflow.
