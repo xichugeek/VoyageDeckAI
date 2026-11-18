@@ -258,7 +258,7 @@
 @media (max-width: 767px) {
   .cp-head { padding-inline: 12px; }
   .cp-terminal-tools { flex-wrap: wrap; }
-  .cp-event { grid-template-columns: 47px 31px 38px minmax(0, 1fr) auto; gap: 4px; }
+  .cp-event { grid-template-columns: 52px 31px 38px minmax(0, 1fr) auto; gap: 4px; }
   .cp-terminal-log { padding-inline: 7px; }
   .cp-chart { height: auto; }
   .cp-chart text { font-size: 19px; }

@@ -22,7 +22,7 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [390, 844]]) {
       const wholePage = width === 390 ? 'console-mobile-full.png' : 'console-desktop-full.png'
       await page.screenshot({ path: fileURLToPath(new URL(wholePage, screenshots)), fullPage: true, animations: 'disabled' })
     }
-    await page.getByRole('button', { name: /选品官详情/ }).click()
+    await page.getByRole('button', { name: /01 选品官 .*查看详情/ }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByText('执行输入', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')

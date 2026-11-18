@@ -4,8 +4,7 @@ import json
 import httpx
 import pytest
 
-from app.providers import Draft, MAX_RESPONSE_BYTES, ProviderError, generate_draft
-
+from app.providers import MAX_RESPONSE_BYTES, Draft, ProviderError, generate_draft
 
 OPTIONS = {
     "mode": "openai_compatible",

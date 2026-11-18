@@ -17,7 +17,6 @@ from app.password import hash_password
 from app.providers import generate_draft
 from app.schemas import InferenceRequest
 
-
 WRITE = {"X-VoyageDeck-Request": "cockpit"}
 TEST_PASSWORD = secrets.token_urlsafe(24)
 TEST_KEY = secrets.token_urlsafe(24)
@@ -31,11 +30,10 @@ def encoded_password() -> str:
 @asynccontextmanager
 async def client_for(settings: Settings):
     app = create_app(settings)
-    async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="https://cockpit.test",
-        ) as client:
-            yield app, client
+    async with app.router.lifespan_context(app), httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://cockpit.test",
+    ) as client:
+        yield app, client
 
 
 async def login(client: httpx.AsyncClient) -> httpx.Response:

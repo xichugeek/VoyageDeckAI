@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import Mode
 from app.providers import Draft
 
-
 Agent = Literal["scout", "lister", "creator", "ads", "service", "fulfillment"]
 Status = Literal["running", "succeeded", "failed", "interrupted"]
 Decision = Literal["approved", "rejected"]

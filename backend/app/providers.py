@@ -189,16 +189,18 @@ async def generate_draft(
         "Accept-Encoding": "identity",
     }
     try:
-        async with asyncio.timeout(timeout_seconds):
-            async with httpx.AsyncClient(
+        async with (
+            asyncio.timeout(timeout_seconds),
+            httpx.AsyncClient(
                 timeout=timeout_seconds,
                 follow_redirects=False,
                 trust_env=False,
                 transport=transport,
-            ) as client:
-                async with client.stream("POST", url, headers=headers, json=payload) as response:
-                    _check_status(response)
-                    body = await _read_reply(response)
+            ) as client,
+            client.stream("POST", url, headers=headers, json=payload) as response,
+        ):
+            _check_status(response)
+            body = await _read_reply(response)
     except (httpx.TimeoutException, TimeoutError):
         raise ProviderError("timeout", "模型请求超时") from None
     except (httpx.HTTPError, UnicodeError):

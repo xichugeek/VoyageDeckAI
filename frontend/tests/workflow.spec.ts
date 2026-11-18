@@ -7,6 +7,7 @@ const screenshots = new URL('../../artifacts/screenshots/', import.meta.url)
 const viewport = { width: 1440, height: 900 }
 
 const flow = (page: Page) => page.getByRole('region', { name: '六岗位实时流程' })
+const flowNode = (page: Page, role: string, status: string) => flow(page).getByRole('button', { name: new RegExp(`^\\d{2} ${role} ${status}，查看详情$`) })
 const decision = (page: Page) => page.getByRole('region', { name: '阶段决策' })
 const metric = (page: Page, label: RegExp) => page.getByRole('region', { name: '模拟经营指标' }).getByRole('button', { name: label })
 
@@ -21,7 +22,7 @@ async function createTask(page: Page, scenario: 'standard' | 'fallback' | 'incid
 }
 
 async function openTask(page: Page, name: string, status: string) {
-  await flow(page).getByRole('button', { name: `${name}详情 · ${status}` }).click()
+  await flowNode(page, name, status).click()
   const dialog = page.getByRole('dialog', { name: `${name} · 岗位详情` })
   await expect(dialog).toBeVisible()
   return dialog
@@ -64,7 +65,7 @@ test('标准成功：六岗位审批、两笔履约、指标与下载复盘可�
   await expect(metric(page, /广告回报 N\/A/)).toBeVisible()
 
   await clickTwice(page.getByRole('button', { name: '启动演示' }))
-  await expect(flow(page).getByRole('button', { name: '选品官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '选品官', '执行中')).toBeVisible()
   await page.clock.runFor(1200)
   await captureState(page, 'state-scout-running.png')
   await page.clock.runFor(3900)
@@ -91,9 +92,9 @@ test('标准成功：六岗位审批、两笔履约、指标与下载复盘可�
   await expect(listing.getByRole('button', { name: '复制产物' })).toBeVisible()
   await closeDialog(page)
   await page.clock.runFor(6000)
-  await expect(flow(page).getByRole('button', { name: '内容官详情 · 待命' })).toBeVisible()
+  await expect(flowNode(page, '内容官', '待命')).toBeVisible()
   await decision(page).getByRole('button', { name: '批准模拟草稿' }).click()
-  await expect(flow(page).getByRole('button', { name: '内容官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '内容官', '执行中')).toBeVisible()
   await page.clock.runFor(5000)
 
   const creative = await openTask(page, '内容官', '已完成')
@@ -102,7 +103,7 @@ test('标准成功：六岗位审批、两笔履约、指标与下载复盘可�
   await expect(decision(page).getByText('待审 · 模拟广告预算', { exact: true })).toBeVisible()
   await expect(metric(page, /模拟广告支出 \$0\.00/)).toBeVisible()
   await clickTwice(decision(page).getByRole('button', { name: '批准模拟预算' }))
-  await expect(flow(page).getByRole('button', { name: '客服官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '客服官', '执行中')).toBeVisible()
   await expect(metric(page, /模拟订单 02/)).toBeVisible()
   await expect(metric(page, /模拟广告支出 \$26\.80/)).toBeVisible()
   await page.clock.runFor(5000)
@@ -110,7 +111,7 @@ test('标准成功：六岗位审批、两笔履约、指标与下载复盘可�
   const support = await openTask(page, '客服官', '已完成')
   await expect(support.getByText(/待审核回复|待审核回覆/).first()).toBeVisible()
   await closeDialog(page)
-  await expect(flow(page).getByRole('button', { name: '履约官详情 · 已完成' })).toBeVisible()
+  await expect(flowNode(page, '履约官', '已完成')).toBeVisible()
   const orders = page.getByRole('region', { name: '模拟订单', exact: true })
   await expect(orders.getByText('已发货', { exact: true })).toHaveCount(2)
   await orders.locator('summary').first().click()
@@ -140,7 +141,7 @@ test('标准成功：六岗位审批、两笔履约、指标与下载复盘可�
 test('低毛利换品：默认备选接棒并体现模拟退款', async ({ page }) => {
   await createTask(page, 'fallback')
   await page.getByRole('button', { name: '启动演示' }).click()
-  await expect(flow(page).getByRole('button', { name: '选品官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '选品官', '执行中')).toBeVisible()
   await page.clock.runFor(5000)
 
   const candidates = page.getByRole('region', { name: '候选商品' })
@@ -148,10 +149,10 @@ test('低毛利换品：默认备选接棒并体现模拟退款', async ({ page 
   await expect(candidates.getByRole('button', { name: /AeroFold.*已选定/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(candidates.getByText(/首选商品淘汰.*切换/)).toBeVisible()
   await decision(page).getByRole('button', { name: '批准模拟草稿' }).click()
-  await expect(flow(page).getByRole('button', { name: '内容官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '内容官', '执行中')).toBeVisible()
   await page.clock.runFor(5000)
   await decision(page).getByRole('button', { name: '批准模拟预算' }).click()
-  await expect(flow(page).getByRole('button', { name: '客服官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '客服官', '执行中')).toBeVisible()
   await page.clock.runFor(5000)
 
   const orders = page.getByRole('region', { name: '模拟订单', exact: true })
@@ -168,23 +169,23 @@ test('故障恢复：暂停冻结链路，恢复后模拟超时仅可重试两�
   await createTask(page, 'incident')
   await page.getByRole('button', { name: '启动演示' }).click()
   await page.getByRole('button', { name: '暂停', exact: true }).click()
-  await expect(flow(page).getByRole('button', { name: '选品官详情 · 已暂停' })).toBeVisible()
+  await expect(flowNode(page, '选品官', '已暂停')).toBeVisible()
   const log = page.getByRole('list', { name: '工作流事件历史' })
   const eventsWhenPaused = await log.getByRole('listitem').count()
   await page.clock.runFor(15_000)
   await expect(log.getByRole('listitem')).toHaveCount(eventsWhenPaused)
-  await expect(flow(page).getByRole('button', { name: '上架官详情 · 待命' })).toBeVisible()
+  await expect(flowNode(page, '上架官', '待命')).toBeVisible()
   await page.getByRole('button', { name: '继续演示' }).click()
-  await expect(flow(page).getByRole('button', { name: '选品官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '选品官', '执行中')).toBeVisible()
   await page.clock.runFor(5000)
   await decision(page).getByRole('button', { name: '批准模拟草稿' }).click()
-  await expect(flow(page).getByRole('button', { name: '内容官详情 · 执行中' })).toBeVisible()
+  await expect(flowNode(page, '内容官', '执行中')).toBeVisible()
   await page.clock.runFor(2500)
-  await expect(flow(page).getByRole('button', { name: '内容官详情 · 失败' })).toBeVisible()
+  await expect(flowNode(page, '内容官', '失败')).toBeVisible()
   await expect(decision(page).getByText(/模拟超时/)).toBeVisible()
   for (const expectedAttempts of [2, 3]) {
     await decision(page).getByRole('button', { name: '重试模拟岗位' }).click()
-    await expect(flow(page).getByRole('button', { name: '内容官详情 · 执行中' })).toBeVisible()
+    await expect(flowNode(page, '内容官', '执行中')).toBeVisible()
     await page.clock.runFor(2500)
     const creator = await openTask(page, '内容官', '失败')
     await expect(creator.getByText(`尝试 ${expectedAttempts} 次`, { exact: true })).toBeVisible()
@@ -199,7 +200,7 @@ test('故障恢复：暂停冻结链路，恢复后模拟超时仅可重试两�
 test('驳回、取消、重置和刷新均保持会话隔离', async ({ page, browser }) => {
   await createTask(page)
   await page.getByRole('button', { name: '单步执行' }).click()
-  await expect(flow(page).getByRole('button', { name: '选品官详情 · 已完成' })).toBeVisible()
+  await expect(flowNode(page, '选品官', '已完成')).toBeVisible()
   await page.getByRole('button', { name: '单步执行' }).click()
   await expect(decision(page).getByText('待审 · 模拟上架草稿', { exact: true })).toBeVisible()
   await page.reload()

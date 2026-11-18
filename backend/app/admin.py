@@ -16,10 +16,17 @@ from app.database import SESSION_AGE, Database
 from app.password import verify_password
 from app.providers import ProviderError, generate_draft
 from app.schemas import (
-    AGENTS, AgentList, EventPage, InferenceRequest, Login, Output, ReviewRequest,
-    SessionStatus, Workflow, WorkflowList,
+    AGENTS,
+    AgentList,
+    EventPage,
+    InferenceRequest,
+    Login,
+    Output,
+    ReviewRequest,
+    SessionStatus,
+    Workflow,
+    WorkflowList,
 )
-
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -192,7 +199,8 @@ async def inference(payload: InferenceRequest, request: Request, state: Admin) -
         except asyncio.CancelledError:
             state.db.interrupt(workflow_id)
             raise
-        except Exception:
+        # Close the persisted run even when the adapter raises an undocumented error.
+        except Exception:  # noqa: BLE001
             log.error("Unexpected provider error for workflow %s", workflow_id)
             return state.db.finish(workflow_id, failure="模型推理异常，未产生草稿。")
         return state.db.finish(workflow_id, draft=draft)

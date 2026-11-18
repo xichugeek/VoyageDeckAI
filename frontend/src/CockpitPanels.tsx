@@ -39,7 +39,7 @@ export function CandidatePanel({ run }: { run: Run }) {
       </dl>
       <p className="cp-candidate-reason"><ChevronRight size={13} />{candidate.reason ?? '启动演示后生成选品判断。'}</p>
       <div className="cp-candidate-choices" aria-label="查看候选商品">
-        {run.candidates.map((item) => <button type="button" key={item.id} onClick={() => setInspectedId(item.id)} aria-label={`${item.name} · ${candidateStatus[item.status]}`} aria-pressed={item.id === candidate.id} className={`cp-candidate-${item.status}`}>
+        {run.candidates.map((item) => <button type="button" key={item.id} onClick={() => setInspectedId(item.id)} aria-label={`${item.sku} · ${item.name} · ${candidateStatus[item.status]}`} aria-pressed={item.id === candidate.id} className={`cp-candidate-${item.status}`}>
           <span className="cp-choice-dot" />{item.sku}
         </button>)}
       </div>

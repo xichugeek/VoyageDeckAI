@@ -8,8 +8,15 @@ from uuid import UUID, uuid4
 
 from app.config import ProviderSettings
 from app.providers import Draft
-from app.schemas import Event, EventPage, InferenceRequest, Output, Review, ReviewRequest, Workflow
-
+from app.schemas import (
+    Event,
+    EventPage,
+    InferenceRequest,
+    Output,
+    Review,
+    ReviewRequest,
+    Workflow,
+)
 
 WORKFLOW_LIMIT = 1000
 SESSION_AGE = 8 * 60 * 60

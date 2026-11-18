@@ -46,8 +46,12 @@ export function Dialog({ title, children, close, wide = false }: { title: string
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const dialog = ref.current!
+    const trigger = document.activeElement
     dialog.showModal()
-    return () => dialog.close()
+    return () => {
+      dialog.close()
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true })
+    }
   }, [])
   return <dialog ref={ref} className={wide ? 'modal modal-wide' : 'modal'} onCancel={(event) => { event.preventDefault(); close() }} aria-label={title}>
     <header className="modal-heading"><h2>{title}</h2><button className="btn icon-btn" aria-label="关闭" onClick={close}><X size={18} /></button></header>

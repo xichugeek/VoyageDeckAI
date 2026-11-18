@@ -1,7 +1,6 @@
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, ChevronRight, CircleCheck, Clipboard, Coins, Globe2, Layers3, Pause, Play, Plus, RotateCcw, Settings, ShoppingBag, SkipForward, Square, Timer, TrendingUp, TriangleAlert, Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AdminBoard } from './AdminBoard'
 import { CandidatePanel, OrderPanel, TerminalPanel, TrendPanel } from './CockpitPanels'
 import { canRetry, createRun, metrics, previewRun, products, reduceRun } from './demo'
 import { agents, localTime, markets, money, percent, runStatusLabel, scenarios, taskStatusLabel } from './model'
@@ -10,6 +9,7 @@ import { Dialog, Logo, PanelTitle, Radar, RoleIcon, tint } from './ui'
 
 const sessionKey = 'voyagedeck-demo-v1'
 const stepMs = 1150
+const AdminBoard = lazy(() => import('./AdminBoard').then(module => ({ default: module.AdminBoard })))
 
 function initialRun(): Run {
   try {
@@ -48,7 +48,7 @@ function Hero({ run, dispatch, newTask, reset, report }: { run: Run; dispatch: (
   const ready = ['draft', 'ready'].includes(run.status)
   const active = run.status === 'running'
   const paused = run.status === 'paused'
-  return <section className="hero" id="overview" aria-labelledby="hero-title" data-status={run.status}>
+  return <section className="hero" id="overview" aria-labelledby="hero-title" data-status={run.status} tabIndex={-1}>
     <Radar />
     <div className="hero-content">
       <div className="hero-heading"><span className="hero-code"><AudioLines size={15} /> MISSION CONTROL</span><span className="run-badge" data-status={run.status}><i /> {runStatusLabel[run.status]}</span></div>
@@ -68,19 +68,39 @@ function Hero({ run, dispatch, newTask, reset, report }: { run: Run; dispatch: (
   </section>
 }
 
+function AnimatedMoney({ cents }: { cents: number }) {
+  const [value, setValue] = useState(cents)
+  const current = useRef(cents)
+  useEffect(() => {
+    const start = current.current
+    if (start === cents) return
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320
+    const at = performance.now()
+    let frame = window.requestAnimationFrame(animate)
+    function animate(now: number) {
+      const progress = duration ? Math.min(1, (now - at) / duration) : 1
+      current.current = Math.round(start + (cents - start) * (1 - (1 - progress) ** 3))
+      setValue(current.current)
+      if (progress < 1) frame = window.requestAnimationFrame(animate)
+    }
+    return () => window.cancelAnimationFrame(frame)
+  }, [cents])
+  return <>{money(value)}</>
+}
+
 function MetricsRow({ run, inspect }: { run: Run; inspect: () => void }) {
   const m = metrics(run)
   const cards = [
-    { name: '模拟成交总额', code: 'GMV', value: money(m.gmv), icon: TrendingUp, color: '#53e1eb' },
+    { name: '模拟成交总额', code: 'GMV', value: money(m.gmv), cents: m.gmv, icon: TrendingUp, color: '#53e1eb' },
     { name: '模拟订单', code: 'ORDERS', value: String(m.count).padStart(2, '0'), icon: ShoppingBag, color: '#7bb4fc' },
-    { name: '模拟广告支出', code: 'AD SPEND', value: money(m.adSpend), icon: Wallet, color: '#f5c65d' },
+    { name: '模拟广告支出', code: 'AD SPEND', value: money(m.adSpend), cents: m.adSpend, icon: Wallet, color: '#f5c65d' },
     { name: '广告回报', code: 'ROAS', value: m.roas === null ? 'N/A' : `${m.roas.toFixed(2)}×`, icon: Activity, color: '#53e1eb' },
-    { name: '模拟商品毛利', code: 'GROSS PROFIT', value: money(m.gross), icon: Coins, color: '#69ddb9' },
+    { name: '模拟商品毛利', code: 'GROSS PROFIT', value: money(m.gross), cents: m.gross, icon: Coins, color: '#69ddb9' },
     { name: '执行中岗位', code: 'AGENTS', value: String(m.working).padStart(2, '0'), icon: Layers3, color: '#af9dff' },
   ]
   return <section className="metrics" aria-label="模拟经营指标">
-    {cards.map(({ name, code, value, icon: Icon, color }, index) => <button className="metric" key={code} style={tint(color)} onClick={inspect} aria-label={`${name} ${value}，查看计算口径`}>
-      <span className="metric-label"><Icon size={15} /> {name}</span><strong className="metric-value" key={value}>{value}{index === 5 && <small> / 06</small>}</strong><span className="metric-code">{code} <ArrowUpRight size={12} /></span>
+    {cards.map(({ name, code, value, cents, icon: Icon, color }, index) => <button className="metric" key={code} style={tint(color)} onClick={inspect} aria-label={`${name} ${value}${index === 5 ? ' / 06' : ''} ${code}，查看计算口径`}>
+      <span className="metric-label"><Icon size={15} /> {name}</span><strong className="metric-value">{cents === undefined ? value : <AnimatedMoney cents={cents} />}{index === 5 && <small> / 06</small>}</strong><span className="metric-code">{' '}{code} <ArrowUpRight size={12} /></span>
     </button>)}
   </section>
 }
@@ -93,16 +113,17 @@ function LiveFlow({ run, inspect }: { run: Run; inspect: (task: Task) => void })
       {run.tasks.map((task, index) => {
         const agent = agents[index]
         const label = task.status === 'running' && run.status === 'paused' ? '已暂停' : taskStatusLabel[task.status]
+        const number = String(index + 1).padStart(2, '0')
         return <li key={task.id} data-state={task.status} style={tint(agent.color)}>
-          <button className="flow-node" onClick={() => inspect(task)} aria-label={`${agent.name}详情 · ${label}`}>
-            <span className="node-index">{String(index + 1).padStart(2, '0')}</span>
+          <button className="flow-node" onClick={() => inspect(task)} aria-label={`${number} ${agent.name} ${label}，查看详情`}>
+            <span className="node-index">{number}</span>
             <span className="node-orbit"><RoleIcon agent={agent.id} size={22} />{task.status === 'succeeded' && <CircleCheck className="node-check" size={13} />}</span>
             <strong>{agent.name}</strong><small>{label}</small>
           </button>
           {index < agents.length - 1 && <span className="flow-link" aria-hidden="true"><i /><ChevronRight size={13} /></span>}
         </li>
       })}
-    </ol></div>
+    </ol></div><p className="flow-hint">横向滑动查看全部岗位 <ArrowRight size={12} /></p>
   </section>
 }
 
@@ -289,7 +310,7 @@ export function App() {
   if (view === 'cancel') modalContent = <><p>停止该任务的剩余步骤，保留现有模拟数据和审计记录。</p><div className="dialog-actions"><button className="btn" onClick={close}>返回</button><button className="btn btn-danger" onClick={() => { dispatch({ type: 'cancel' }); close() }}>确认取消</button></div></>
   if (view === 'metrics') modalContent = <MetricDetails run={run} />
   if (view === 'report') modalContent = <Report run={historical || run} />
-  if (view === 'admin') modalContent = <AdminBoard />
+  if (view === 'admin') modalContent = <Suspense fallback={<p role="status">正在加载管理界面…</p>}><AdminBoard /></Suspense>
   if (view === 'history') modalContent = history.length ? <ul className="history-list">{history.map(item => <li key={item.id}><button className="btn" onClick={() => { setHistorical(item); setView('report') }}>{scenarios[item.config.scenario]} · {runStatusLabel[item.status]} · {item.id.slice(0, 8)} <ArrowUpRight size={14} /></button></li>)}</ul> : <p>新建第二个任务后，可在此回看上一轮模拟记录。</p>
 
   return <>

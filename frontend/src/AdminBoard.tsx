@@ -1,5 +1,5 @@
 import { ArrowDownToLine, ChevronRight, Clipboard, Cpu, Gauge, History, KeyRound, LogOut, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AdminRequestError, adminApi } from './adminApi'
 import type { Provider, Session, Workflow, WorkflowEvent } from './adminApi'
@@ -113,13 +113,13 @@ export function AdminBoard() {
   const lock = useRef(false)
   const pending = useRef<{ agent: AgentId; context: string; id: string } | null>(null)
 
-  function reportError(error: unknown) {
+  const reportError = useCallback((error: unknown) => {
     if (error instanceof AdminRequestError && error.status === 401) {
       setSession(current => current && { ...current, authenticated: false })
       setProvider(undefined); setWorkflows([]); setSelected(undefined); setEvents([])
     }
     setError(textOf(error))
-  }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -137,7 +137,7 @@ export function AdminBoard() {
       setWorkflows(history.workflows)
     }, error => { if (!controller.signal.aborted) reportError(error) })
     return () => controller.abort()
-  }, [session?.authenticated])
+  }, [session?.authenticated, reportError])
 
   async function execute(label: string, operation: () => Promise<void>) {
     if (lock.current) return
