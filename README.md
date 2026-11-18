@@ -27,11 +27,28 @@ Pop-Location
 
 审批、订单和广告支出属于当前标签页的模拟工作流。页面刷新会恢复该会话的记录。新建任务会归档上一轮，重置只清除当前任务的进度。
 
+## 管理员本地初始化
+
+管理员入口默认关闭。若要在本机验证 Mock 推理与审核，请在运行开发脚本的同一 PowerShell 中设定管理员密码散列：
+
+```powershell
+Push-Location backend
+$env:VOYAGEDECK_ADMIN_PASSWORD_HASH = .\.venv\Scripts\python.exe -m app.password
+Pop-Location
+$env:VOYAGEDECK_INSECURE_COOKIE = '1'
+.\scripts\dev.ps1
+```
+
+在指挥台右上角打开管理后台，使用刚设置的密码登录。`VOYAGEDECK_INSECURE_COOKIE=1` 仅用于本机 HTTP。默认 Mock 模式无需 API Key。OpenAI-compatible 配置由服务端环境变量限定 HTTPS 基址及密钥，管理界面显示密钥配置状态，并要求逐次确认真实模型调用。
+
+## 自动化验证
+
 ```powershell
 Push-Location frontend
 npx.cmd playwright install chromium
 npm.cmd run test:unit
 npm.cmd run test:e2e
+npm.cmd run test:admin
 npm.cmd run build
 Pop-Location
 Push-Location backend

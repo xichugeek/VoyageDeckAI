@@ -17,7 +17,7 @@ function drive(initial: Run) {
     send({ type: 'tick' })
     return send({ type: 'tick' })
   }
-  function review(type: 'approve' | 'reject' = 'approve'): Action {
+  function review(type: 'approve' | 'reject' = 'approve'): Extract<Action, { taskId: string }> {
     const { id, attempts } = state.tasks[state.activeIndex]
     return { type, taskId: id, attempt: attempts }
   }

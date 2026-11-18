@@ -1,0 +1,37 @@
+.admin-board, .admin-login, .admin-form, .admin-review { display: grid; gap: 11px; }
+.admin-toolbar, .admin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.admin-toolbar { justify-content: space-between; }
+.admin-actions > span, .admin-notice { color: #a4c8d8; font-size: 12px; }
+.admin-login .btn, .admin-form > .btn { justify-self: start; }
+.admin-panel { border: 1px solid #2b425a; border-radius: 6px; background: #101b2a; overflow: hidden; }
+.admin-panel > h3, .admin-panel > summary { display: flex; align-items: center; gap: 8px; padding: 9px 11px; min-height: 37px; font-size: 14px; color: #e8f2fd; font-weight: 650; background: #132133; }
+.admin-panel > summary { list-style: none; cursor: pointer; }
+.admin-panel > summary::-webkit-details-marker { display: none; }
+.admin-panel > summary > svg:first-child, .admin-panel > h3 > svg { color: var(--cyan); }
+.admin-panel > summary > span, .admin-panel > h3 > span { margin-left: auto; color: var(--soft); font: 11px var(--mono); }
+.admin-panel > summary > svg:last-child { color: var(--soft); }
+.admin-panel[open] > summary > svg:last-child { transform: rotate(90deg); }
+.admin-panel > h3 > .btn { margin-left: auto; min-height: 25px; width: 25px; }
+.admin-panel .admin-form { padding: 11px; }
+.admin-panel .form-grid { gap: 8px; }
+.admin-spanning { grid-column: 1 / -1; }
+.admin-form textarea { resize: vertical; }
+.admin-confirm { display: flex; gap: 5px; align-items: center; font-size: 12px; color: #f2cb85; }
+.admin-history { display: grid; gap: 5px; max-height: 206px; overflow: auto; margin: 0; padding: 8px; list-style: none; }
+.admin-history button { width: 100%; justify-content: space-between; text-align: left; white-space: normal; }
+.admin-history button[aria-pressed="true"] { border-color: #6cb5c0; background: #162c3c; }
+.admin-history button > span:first-child { display: grid; gap: 3px; margin-right: auto; }
+.admin-history button small { color: #a7bacd; font: 11px var(--mono); }
+.admin-context { color: #c0d3e4; font-size: 12px; }
+.admin-context summary { cursor: pointer; color: #9dc9da; }
+.admin-context p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.admin-context ol { padding-left: 17px; }
+.admin-context time { font: 11px var(--mono); color: #96bfce; }
+.admin-output { display: grid; gap: 7px; padding: 9px 11px; background: #091420; border: 1px solid #2b4158; border-radius: 6px; overflow-wrap: anywhere; }
+.admin-output h4, .admin-output h5, .admin-output ul { margin: 0; }
+.admin-output h5 { color: #a3dce7; font-size: 13px; }
+.admin-output ul { padding-left: 18px; color: #c7d9e8; }
+.admin-result h3 > span[data-state="failed"], .admin-result h3 > span[data-state="interrupted"] { color: #ffa1ad; }
+.admin-result h3 > span[data-state="succeeded"] { color: #83e5c1; }
+.admin-board .admin-error { padding: 7px 9px; color: #ffd0d7; background: #321e2b; border: 1px solid #704153; border-radius: 5px; }
+.admin-board .admin-review-record { color: #91e8c2; }

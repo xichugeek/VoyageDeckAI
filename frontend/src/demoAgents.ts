@@ -90,7 +90,7 @@ export function roleInput(run: Run, role: AgentId): Record<string, unknown> {
       目标市场: markets[run.config.market], 类目: run.config.category, 模拟广告预算: money(run.config.budget),
       最低毛利率: percent(run.config.marginFloor), 合规风险上限: riskLimit, 优先商品: run.config.preferredId,
       候选商品: run.candidates.map(({ id, sku, name, cost, price }) => ({ id, sku, name, 采购成本: money(cost), 定价: money(price) })),
-      评分权重: { 需求: 30, 毛利: 35, 竞争度倒数: 15, 合规风险倒数: 10, 供应可靠性: 10 },
+      评分权重: { 需求: 30, 毛利: 35, 低竞争度: 15, 低合规风险: 10, 供应可靠性: 10 },
     }
     case 'lister': return {
       通过筛选的商品: product?.name, 候选决策ID: prior('scout'), 目标市场: markets[run.config.market],

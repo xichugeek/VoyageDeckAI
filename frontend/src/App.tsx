@@ -1,6 +1,7 @@
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, ChevronRight, CircleCheck, Clipboard, Coins, Globe2, Layers3, Pause, Play, Plus, RotateCcw, Settings, ShoppingBag, SkipForward, Square, Timer, TrendingUp, TriangleAlert, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import { AdminBoard } from './AdminBoard'
 import { CandidatePanel, OrderPanel, TerminalPanel, TrendPanel } from './CockpitPanels'
 import { canRetry, createRun, metrics, previewRun, products, reduceRun } from './demo'
 import { agents, localTime, markets, money, percent, runStatusLabel, scenarios, taskStatusLabel } from './model'
@@ -288,7 +289,7 @@ export function App() {
   if (view === 'cancel') modalContent = <><p>停止该任务的剩余步骤，保留现有模拟数据和审计记录。</p><div className="dialog-actions"><button className="btn" onClick={close}>返回</button><button className="btn btn-danger" onClick={() => { dispatch({ type: 'cancel' }); close() }}>确认取消</button></div></>
   if (view === 'metrics') modalContent = <MetricDetails run={run} />
   if (view === 'report') modalContent = <Report run={historical || run} />
-  if (view === 'admin') modalContent = <p>管理后台将在模型配置和访问控制验收后开放。</p>
+  if (view === 'admin') modalContent = <AdminBoard />
   if (view === 'history') modalContent = history.length ? <ul className="history-list">{history.map(item => <li key={item.id}><button className="btn" onClick={() => { setHistorical(item); setView('report') }}>{scenarios[item.config.scenario]} · {runStatusLabel[item.status]} · {item.id.slice(0, 8)} <ArrowUpRight size={14} /></button></li>)}</ul> : <p>新建第二个任务后，可在此回看上一轮模拟记录。</p>
 
   return <>
@@ -319,6 +320,6 @@ export function App() {
       <footer className="console-footer"><span><span className="online-dot" /> 模拟数据 · USD <span className="foot-mid">/</span> 当前浏览器会话</span><div><button className="btn" onClick={() => setView('history')}>任务历史</button>{(!terminal || canRetry(run)) && <button className="btn" onClick={() => setView('cancel')}><Square size={13} /> 取消任务</button>}<button className="btn" onClick={() => setView('report')}>运行记录</button></div></footer>
     </main>
     {selectedTask && <Dialog title={`${agents.find(agent => agent.id === selectedTask.agent)?.name} · 岗位详情`} close={close} wide><TaskDetails run={run} task={selectedTask} /></Dialog>}
-    {view && <Dialog title={titles[view]} close={close} wide={view === 'report'}>{modalContent}</Dialog>}
+    {view && <Dialog title={titles[view]} close={close} wide={view === 'report' || view === 'admin'}>{modalContent}</Dialog>}
   </>
 }
