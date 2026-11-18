@@ -2,6 +2,8 @@
 
 六岗位跨境运营演示指挥台，覆盖选品、上架、内容制作、投流、客服和履约。访客沙盒使用虚构产品和模拟交易。
 
+[打开在线演示](https://voyagedeck.demo.xichugeek.com/)
+
 ## Windows 本地启动
 
 需要 Git、Node.js 22.13+（22.x）和 Python 3.12。在 PowerShell 中执行：
