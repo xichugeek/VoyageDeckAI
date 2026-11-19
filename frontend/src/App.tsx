@@ -6,6 +6,7 @@ import { advanceAutomaticRun, canRetry, createRun, metrics, openAutomaticDemo, p
 import { agents, localTime, markets, money, percent, runStatusLabel, scenarios, taskStatusLabel } from './model'
 import type { Action, Config, Run, Task } from './model'
 import { Dialog, Logo, PanelTitle, Radar, RoleIcon, tint } from './ui'
+import './motion.css'
 
 const legacySessionKey = 'voyagedeck-demo-v1'
 const manualEntry = new URLSearchParams(window.location.search).get('mode') === 'manual'
@@ -81,13 +82,13 @@ function Hero({ run, dispatch, newTask, reset, report, toggleAutoplay, startAuto
   </section>
 }
 
-function AnimatedMoney({ cents }: { cents: number }) {
+function AnimatedMoney({ cents, fast }: { cents: number; fast: boolean }) {
   const [value, setValue] = useState(cents)
   const current = useRef(cents)
   useEffect(() => {
     const start = current.current
     if (start === cents) return
-    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : fast ? 180 : 320
     const at = performance.now()
     let frame = window.requestAnimationFrame(animate)
     function animate(now: number) {
@@ -97,12 +98,14 @@ function AnimatedMoney({ cents }: { cents: number }) {
       if (progress < 1) frame = window.requestAnimationFrame(animate)
     }
     return () => window.cancelAnimationFrame(frame)
-  }, [cents])
+  }, [cents, fast])
   return <>{money(value)}</>
 }
 
 function MetricsRow({ run, inspect }: { run: Run; inspect: () => void }) {
   const m = metrics(run)
+  const last = run.snapshots.at(-1)
+  const gmvIncrease = last ? last.gmv - (run.snapshots.at(-2)?.gmv ?? 0) : 0
   const cards = [
     { name: '模拟成交总额', code: 'GMV', value: money(m.gmv), cents: m.gmv, icon: TrendingUp, color: '#53e1eb' },
     { name: '模拟订单', code: 'ORDERS', value: String(m.count).padStart(2, '0'), icon: ShoppingBag, color: '#7bb4fc' },
@@ -113,27 +116,49 @@ function MetricsRow({ run, inspect }: { run: Run; inspect: () => void }) {
   ]
   return <section className="metrics" aria-label="模拟经营指标">
     {cards.map(({ name, code, value, cents, icon: Icon, color }, index) => <button className="metric" key={code} style={tint(color)} onClick={inspect} aria-label={`${name} ${value}${index === 5 ? ' / 06' : ''} ${code}，查看计算口径`}>
-      <span className="metric-label"><Icon size={15} /> {name}</span><strong className="metric-value">{cents === undefined ? value : <AnimatedMoney cents={cents} />}{index === 5 && <small> / 06</small>}</strong><span className="metric-code">{' '}{code} <ArrowUpRight size={12} /></span>
+      <span className="metric-label"><Icon size={15} /> {name}</span>
+      <strong className="metric-value">{cents === undefined ? value : <AnimatedMoney cents={cents} fast={!!run.autoplay} />}{index === 5 && <small> / 06</small>}</strong>
+      <span className="metric-code">{' '}{code}
+        {code === 'GMV' && run.autoplay && gmvIncrease > 0 && <span className="metric-delta" key={`${run.id}-${last?.seq}`} aria-hidden="true">+{money(gmvIncrease)}</span>}
+        <ArrowUpRight size={12} />
+      </span>
     </button>)}
   </section>
 }
 
+function latestRoleEvent(run: Run) {
+  for (let index = run.events.length - 1; index >= 0; index -= 1) {
+    const event = run.events[index]
+    if (event.taskId) return event
+  }
+}
+
 function LiveFlow({ run, inspect }: { run: Run; inspect: (task: Task) => void }) {
   const done = run.tasks.filter(task => task.status === 'succeeded').length
+  const paused = isPaused(run)
+  const event = latestRoleEvent(run)
   return <section className="flow-panel panel" id="flow" aria-label="六岗位实时流程">
     <div className="panel-header"><PanelTitle title="任务执行链路" english="LIVE FLOW" live /><span className="flow-count mono"><strong>{String(done).padStart(2, '0')}</strong> / 06 完成</span></div>
     <div className="flow-scroll"><ol className="flow-steps">
       {run.tasks.map((task, index) => {
         const agent = agents[index]
-        const label = task.status === 'running' && isPaused(run) ? '已暂停' : taskStatusLabel[task.status]
+        const label = task.status === 'running' && paused ? '已暂停' : taskStatusLabel[task.status]
         const number = String(index + 1).padStart(2, '0')
+        const next = run.tasks[index + 1]
+        const transfer = task.status === 'succeeded' && run.activeIndex === index + 1 && next?.startedAt
         return <li key={task.id} data-state={task.status} style={tint(agent.color)}>
           <button className="flow-node" onClick={() => inspect(task)} aria-label={`${number} ${agent.name} ${label}，查看详情`}>
             <span className="node-index">{number}</span>
-            <span className="node-orbit"><RoleIcon agent={agent.id} size={22} />{task.status === 'succeeded' && <CircleCheck className="node-check" size={13} />}</span>
+            <span className="node-orbit"><RoleIcon agent={agent.id} size={22} />
+              {task.status === 'succeeded' && <CircleCheck className="node-check" size={13} />}
+              {event?.taskId === task.id && <span aria-hidden="true" className="node-event" key={event.seq} />}
+            </span>
             <strong>{agent.name}</strong><small>{label}</small>
           </button>
-          {index < agents.length - 1 && <span className="flow-link" aria-hidden="true"><i /><ChevronRight size={13} /></span>}
+          {next && <span className="flow-link" aria-hidden="true">
+            {transfer && <span className="flow-packets" key={transfer}><i /><i /><i /></span>}
+            <ChevronRight size={13} />
+          </span>}
         </li>
       })}
     </ol></div><p className="flow-hint">横向滑动查看全部岗位 <ArrowRight size={12} /></p>
@@ -141,12 +166,15 @@ function LiveFlow({ run, inspect }: { run: Run; inspect: (task: Task) => void })
 }
 
 function AgentRoster({ run, inspect }: { run: Run; inspect: (task: Task) => void }) {
+  const paused = isPaused(run)
+  const event = latestRoleEvent(run)
   return <aside className="roster" aria-label="六岗位运行状态">
     <div className="roster-header"><PanelTitle title="岗位矩阵" english="AGENT ROSTER" /><span className="mono">06</span></div>
     <div className="roster-list">{run.tasks.map((task, index) => {
       const agent = agents[index]
       return <button className="agent-card" data-state={task.status} key={task.id} style={tint(agent.color)} onClick={() => inspect(task)}>
-        <span className="agent-line"><span className="role-icon"><RoleIcon agent={agent.id} size={18} /></span><strong>{agent.name}<small>{agent.label}</small></strong><span className="agent-status"><i /> {task.status === 'running' && isPaused(run) ? '已暂停' : taskStatusLabel[task.status]}</span></span>
+        {event?.taskId === task.id && <span aria-hidden="true" className="agent-event" key={event.seq} />}
+        <span className="agent-line"><span className="role-icon"><RoleIcon agent={agent.id} size={18} /></span><strong>{agent.name}<small>{agent.label}</small></strong><span className="agent-status"><i /> {task.status === 'running' && paused ? '已暂停' : taskStatusLabel[task.status]}</span></span>
         <span className="agent-action" title={task.summary || agent.action}>{task.summary || agent.action}</span>
         <span className="agent-footer"><span className="agent-progress"><i style={{ width: `${task.progress}%` }} /></span><span>{task.processed} {agent.unit}</span></span>
       </button>
@@ -303,7 +331,7 @@ export function App() {
   }, [history])
   useEffect(() => {
     if (!run.autoplay || run.autoplay.paused || view || inspected) return
-    const delay = run.status === 'completed' ? 8500 : run.status === 'awaiting_approval' ? 1300 : 1000
+    const delay = run.status === 'completed' ? 2800 : run.status === 'awaiting_approval' ? 420 : 320
     const timer = window.setTimeout(() => {
       const next = advanceAutomaticRun(run)
       if (next.id !== run.id) archive(run)
@@ -345,15 +373,15 @@ export function App() {
   return <>
     <a className="skip-link" href="#overview">跳转到指挥台</a>
     <Header run={run} openAdmin={() => setView('admin')} />
-    <main className="console-layout">
+    <main className="console-layout" data-live-paused={isPaused(run) || !!view || !!inspected}>
       <Hero run={run} dispatch={dispatch} newTask={() => setView('new')} reset={() => setView('reset')} report={() => setView('report')}
-        toggleAutoplay={() => setRun(current => current.autoplay ? { ...current, autoplay: { paused: !current.autoplay.paused } } : current)}
+        toggleAutoplay={() => setRun(current => current.autoplay ? { ...current, autoplay: { ...current.autoplay, paused: !current.autoplay.paused } } : current)}
         startAutoplay={() => { archive(run.status === 'running' ? reduceRun(run, { type: 'pause' }) : run); setRun(openAutomaticDemo()) }} />
       <MetricsRow run={run} inspect={() => setView('metrics')} />
       <div className="cockpit-grid">
         <div className="main-deck">
           <LiveFlow run={run} inspect={inspect} />
-          <section className="decision-strip" data-status={run.status} aria-label="阶段决策" aria-live="polite">
+          <section className="decision-strip" data-status={run.status} aria-label="阶段决策" aria-live={run.autoplay ? 'off' : 'polite'}>
             <span className="decision-icon">{approval || run.status === 'failed' ? <TriangleAlert size={17} /> : <Activity size={17} />}</span>
             <div><strong>{approval ? (run.autoplay ? '轮播 · 模拟审批' : approval.agent === 'ads' ? '待审 · 模拟广告预算' : '待审 · 模拟上架草稿') : '阶段动态'}</strong><span>{summary}</span></div>
             <div className="decision-actions">

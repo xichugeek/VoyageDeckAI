@@ -120,13 +120,20 @@ code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums;
 .flow-node small { color: var(--soft); font-size: 11px; }
 .flow-steps li[data-state="pending"] .node-orbit { opacity: .64; }
 .flow-steps li[data-state="running"] .node-orbit, .flow-steps li[data-state="awaiting_approval"] .node-orbit, .flow-node:hover .node-orbit { border-color: var(--role); box-shadow: 0 0 17px color-mix(in srgb, var(--role) 36%, transparent); }
+.node-event { position: absolute; inset: 0; pointer-events: none; border: 1px solid var(--role); border-radius: inherit; opacity: 0; animation: flow-receive .38s ease-out; }
 [data-state="failed"] { --role: #ff8495 !important; }
 .flow-link { position: absolute; left: calc(50% + 31px); right: calc(-50% + 31px); top: 36px; height: 1px; border-top: 1px dashed #3d5168; color: #718da5; }
 .flow-link svg { position: absolute; right: -4px; top: -7px; }
 .flow-steps li[data-state="succeeded"] .flow-link { color: var(--role); border: 0; background: linear-gradient(90deg, var(--role), #355269); }
-.flow-steps li[data-state="running"] .flow-link i { position: absolute; top: -3px; width: 5px; height: 5px; background: var(--role); border-radius: 50%; box-shadow: 0 0 7px var(--role); animation: signal 2.3s linear infinite; }
-[data-status="paused"] ~ .metrics + .cockpit-grid .flow-link i { animation-play-state: paused; }
-@keyframes signal { from { left: 0; opacity: 0; } 15%, 85% { opacity: 1; } to { left: 100%; opacity: 0; } }
+.flow-packets { position: absolute; inset: -4px 0; overflow: clip; pointer-events: none; }
+.flow-packets i { position: absolute; inset: 0; opacity: 0; animation: flow-transmit .38s linear; }
+.flow-packets i:nth-child(2) { animation-delay: .065s; }
+.flow-packets i:nth-child(3) { animation-delay: .13s; }
+.flow-packets i::before { content: ''; position: absolute; top: 3px; left: 0; height: 3px; width: min(19px, 38%); border-radius: 3px; background: linear-gradient(90deg, transparent, var(--role) 63%, #e3fcff); box-shadow: 0 0 5px var(--role); }
+@keyframes flow-transmit { from { opacity: 0; transform: translateX(-15%); } 18%, 80% { opacity: 1; } to { opacity: 0; transform: translateX(100%); } }
+@keyframes flow-receive { from { opacity: .7; transform: scale(.94); } to { opacity: 0; transform: scale(1.25); } }
+@keyframes agent-receive { from { opacity: .85; } to { opacity: 0; } }
+[data-live-paused="true"] :is(.flow-packets i, .node-event, .agent-event) { animation-play-state: paused; }
 @keyframes heartbeat { 50% { box-shadow: 0 0 9px currentColor; } }
 
 .decision-strip { min-height: 55px; border-radius: 7px; border: 1px solid #254156; background: #101e2c; padding: 8px 10px; display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -156,6 +163,7 @@ code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums;
 .roster-list { display: grid; gap: 7px; }
 .agent-card { width: 100%; min-width: 0; text-align: left; background: linear-gradient(105deg, color-mix(in srgb, var(--role) 5%, #111b29), #0f1926 83%); color: inherit; border: 1px solid #26364a; border-radius: 6px; padding: 5px 9px; display: grid; gap: 2px; position: relative; overflow: hidden; }
 .agent-card::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 0 4px 4px 0; opacity: .65; background: var(--role); }
+.agent-event { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: linear-gradient(100deg, color-mix(in srgb, var(--role) 20%, transparent), transparent 72%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--role) 65%, transparent); border-radius: inherit; animation: agent-receive .42s ease-out; }
 .agent-card:hover, .agent-card[data-state="running"], .agent-card[data-state="awaiting_approval"], .agent-card[data-state="failed"] { border-color: color-mix(in srgb, var(--role) 68%, #243950); }
 .agent-card[data-state="running"], .agent-card[data-state="awaiting_approval"] { background: linear-gradient(105deg, color-mix(in srgb, var(--role) 15%, #101d2b), #0f1a27 88%); }
 .agent-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -168,7 +176,8 @@ code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums;
 .agent-action { color: #acbdd0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-footer { display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 11px; white-space: nowrap; }
 .agent-progress { flex: 1; height: 3px; background: #243548; border-radius: 4px; }
-.agent-progress i { display: block; height: 100%; background: var(--role); border-radius: inherit; transition: width .35s ease-out; }
+.agent-progress i { display: block; height: 100%; background: var(--role); border-radius: inherit; transition: width .20s ease-out; }
+[data-live-paused="true"] .agent-progress i { transition: none; }
 .console-footer, .console-footer > div { display: flex; align-items: center; gap: 8px; }
 .console-footer { justify-content: space-between; min-height: 34px; color: var(--soft); font-size: 12px; }
 .console-footer .btn { min-height: 29px; font-size: 12px; }

@@ -61,9 +61,9 @@ export function scoreCandidate(product: Product, config: Config): Product {
   }
 }
 
-export function inventoryFor(config: Config): Record<string, Stock> {
+export function inventoryFor(config: Config, quantity = config.scenario === 'fallback' ? 1 : 8): Record<string, Stock> {
   return Object.fromEntries(products.map(product => [
-    product.sku, { available: config.scenario === 'fallback' ? 1 : 8, reserved: 0, shipped: 0 },
+    product.sku, { available: quantity, reserved: 0, shipped: 0 },
   ]))
 }
 

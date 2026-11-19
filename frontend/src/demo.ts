@@ -7,6 +7,11 @@ import {
 export { products }
 export const retryLimit = 2
 
+const automaticRounds = {
+  standard: { orderTarget: 12, stock: 16 },
+  fallback: { orderTarget: 10, stock: 8 },
+}
+
 const defaultConfig: Config = {
   scenario: 'standard', market: 'US', preferredId: 'nomad', category: '旅行收纳', marginFloor: 0.35, budget: 6000,
 }
@@ -171,38 +176,38 @@ function recordSpend(run: Run, task: Task, at: string) {
 function addOrder(run: Run, product: Product, task: Task, at: string) {
   const index = run.orders.length + 1
   const order: Order = {
-    id: `SIM-${run.id.slice(0, 8).toUpperCase()}-0${index}`, sku: product.sku, status: 'created',
+    id: `SIM-${run.id.slice(0, 8).toUpperCase()}-${String(index).padStart(2, '0')}`, sku: product.sku, status: 'created',
     amount: product.price, refund: 0, productCost: product.cost, shipping: 0, platformFee: Math.round(product.price * 0.06),
-    attributed: index === 1 && run.adSpend > 0, units: 1, events: [], dataSource: source,
+    attributed: index % 6 === 1 && run.adSpend > 0, units: 1, events: [], dataSource: source,
   }
   run.orders.push(order)
   orderEvent(run, task, order, at, 'created', `创建模拟订单 · ${money(order.amount)}`, 'success')
 }
 
-function fulfill(run: Run, task: Task, at: string) {
+function fulfillOrder(run: Run, task: Task, order: Order, at: string) {
   run.inventory ??= inventoryFor(run.config)
-  for (const order of run.orders) {
-    if (order.status !== 'created') continue
-    const stock = run.inventory[order.sku]
-    const units = order.units ?? 1
-    if (stock.available < units) {
-      orderEvent(run, task, order, at, 'stock_shortage', '库存不足 · 模拟拦截，转入退款', 'warn')
-      order.status = 'refunded'
-      order.refund = order.amount
-      order.productCost = 0
-      order.platformFee = 0
-      orderEvent(run, task, order, at, 'refunded', `已模拟全额退款 ${money(order.refund)}`, 'warn')
-      continue
-    }
-    stock.available -= units
-    stock.reserved += units
-    orderEvent(run, task, order, at, 'reserved', `占用 ${units} 件模拟库存`, 'info')
-    order.status = 'shipped'
-    order.shipping = 480
-    stock.reserved -= units
-    stock.shipped += units
-    orderEvent(run, task, order, at, 'shipped', '库存校验通过 · 模拟发货', 'success')
+  const stock = run.inventory[order.sku]
+  const units = order.units ?? 1
+  if (stock.available < units) {
+    orderEvent(run, task, order, at, 'stock_shortage', '库存不足 · 模拟拦截，转入退款', 'warn')
+    order.status = 'refunded'
+    order.refund = order.amount
+    order.productCost = 0
+    order.platformFee = 0
+    orderEvent(run, task, order, at, 'refunded', `已模拟全额退款 ${money(order.refund)}`, 'warn')
+    return
   }
+  stock.available -= units
+  stock.reserved += units
+  orderEvent(run, task, order, at, 'reserved', `占用 ${units} 件模拟库存`, 'info')
+  order.status = 'shipped'
+  order.shipping = 480
+  stock.reserved -= units
+  stock.shipped += units
+  orderEvent(run, task, order, at, 'shipped', '库存校验通过 · 模拟发货', 'success')
+}
+
+function finishFulfillment(run: Run, task: Task) {
   const shipped = run.orders.filter(order => order.status === 'shipped').length
   const refunded = run.orders.filter(order => order.status === 'refunded').length
   output(run, task, { 模拟订单: run.orders, SKU库存: run.inventory, 模拟发货笔数: shipped, 模拟退款笔数: refunded })
@@ -269,7 +274,11 @@ function finish(run: Run, task: Task, at: string) {
       task.processed = 3
       break
     case 'fulfillment':
-      fulfill(run, task, at)
+      run.inventory ??= inventoryFor(run.config)
+      for (const order of run.orders) {
+        if (order.status === 'created') fulfillOrder(run, task, order, at)
+      }
+      finishFulfillment(run, task)
       break
   }
   if (task.agent === 'lister' || task.agent === 'ads') {
@@ -348,17 +357,32 @@ export function reduceRun(run: Run, action: Action, now = Date.now()): Run {
       finish(next, task, at)
       break
     case 'tick':
-      if (next.autoplay && task.agent === 'ads' && task.progress === 90) {
+      if (next.autoplay && task.agent === 'ads' && task.progress >= 85) {
         const product = next.candidates.find(({ id }) => id === next.selectedId)
         if (!product) {
           fail(next, task, at, '缺少已批准的候选商品')
           break
         }
-        addOrder(next, product, task, at)
-        if (next.orders.length === 2) {
-          task.summary = '两笔模拟订单已写入'
+        const target = next.autoplay.orderTarget ?? 2
+        if (next.orders.length < target) addOrder(next, product, task, at)
+        const received = next.orders.length
+        task.summary = `已写入 ${received} / ${target} 笔模拟订单`
+        if (received >= target) {
           succeed(next, task, at)
-        } else task.summary = '首笔模拟订单已写入'
+        } else task.progress = 85 + Math.round(received * 14 / target)
+      } else if (next.autoplay && task.agent === 'fulfillment') {
+        const order = next.orders.find(order => order.status === 'created')
+        if (order) {
+          fulfillOrder(next, task, order, at)
+          task.processed += 1
+        }
+        if (next.orders.some(order => order.status === 'created')) {
+          task.progress = 25 + Math.round(task.processed * 74 / next.orders.length)
+          task.summary = `正在核验 · ${task.processed} / ${next.orders.length} 笔订单已处理`
+        } else {
+          finishFulfillment(next, task)
+          succeed(next, task, at)
+        }
       } else if (task.progress === 25) task.progress = 60
       else finish(next, task, at)
       break
@@ -402,7 +426,7 @@ export function reduceRun(run: Run, action: Action, now = Date.now()): Run {
         recordSpend(next, task, at)
         if (automatic) {
           task.status = 'running'
-          task.progress = 90
+          task.progress = 85
           task.summary = '已批准模拟预算 · 等待订单进入'
           break
         }
@@ -417,8 +441,12 @@ export function reduceRun(run: Run, action: Action, now = Date.now()): Run {
   return next
 }
 
-function startAutomaticRun(config: Partial<Config>, now: number) {
-  return reduceRun({ ...createRun(config, now), autoplay: { paused: false } }, { type: 'start' }, now)
+function startAutomaticRun(scenario: keyof typeof automaticRounds, now: number) {
+  const run = createRun({ scenario }, now)
+  const { orderTarget, stock } = automaticRounds[scenario]
+  run.inventory = inventoryFor(run.config, stock)
+  run.autoplay = { paused: false, orderTarget }
+  return reduceRun(run, { type: 'start' }, now)
 }
 
 export function advanceAutomaticRun(run: Run, now = Date.now()): Run {
@@ -429,14 +457,14 @@ export function advanceAutomaticRun(run: Run, now = Date.now()): Run {
     return reduceRun(run, { type: 'autoApprove', taskId: task.id, attempt: task.attempts }, now)
   }
   if (run.status === 'completed') {
-    return startAutomaticRun({ scenario: run.config.scenario === 'standard' ? 'fallback' : 'standard' }, now)
+    return startAutomaticRun(run.config.scenario === 'standard' ? 'fallback' : 'standard', now)
   }
   return run
 }
 
 export function openAutomaticDemo(now = Date.now()): Run {
   // Enter the first round at the live advertising stage, ahead of the first order.
-  let run = startAutomaticRun({ scenario: 'standard' }, now - 7000)
+  let run = startAutomaticRun('standard', now - 7000)
   for (let step = 1; step <= 7; step += 1) {
     run = advanceAutomaticRun(run, now - (7 - step) * 1000)
   }

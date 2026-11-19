@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { ArrowUpRight, Box, ChartNoAxesCombined, ChevronRight, CircleDot, Clock3, ListFilter, Radar, Terminal } from 'lucide-react'
 import { agents, localTime, money, percent } from './model'
-import type { AgentId, Run } from './model'
+import type { AgentId, Order, Run } from './model'
 import './panels.css'
 
 const roles = new Map(agents.map(role => [role.id, role]))
@@ -12,6 +13,31 @@ const candidateStatus = {
 
 const eventLevel = { info: 'INFO', success: 'OK', warn: 'WARN', error: 'ERR' }
 const orderStatus = { created: '已创建', shipped: '已发货', refunded: '已退款', canceled: '已取消' }
+
+function useFeedPulse(run: Run, feed: RefObject<HTMLElement | null>) {
+  const seq = run.events.at(-1)?.seq ?? 0
+  const seen = useRef({ id: run.id, seq })
+
+  useLayoutEffect(() => {
+    const previous = seen.current
+    seen.current = { id: run.id, seq }
+    if (previous.id !== run.id || previous.seq >= seq || feed.current?.closest('[data-live-paused="true"]')
+      || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const rows = feed.current?.querySelectorAll<HTMLElement>('[data-feed-seq]') ?? []
+    const appended = Array.from(rows).filter(row => Number(row.dataset.feedSeq) > previous.seq)
+    for (const row of appended.slice(-4)) {
+      for (const animation of row.getAnimations()) {
+        if (animation.id === 'feed-pulse') animation.cancel()
+      }
+      const accent = getComputedStyle(row).getPropertyValue('--cp-flash').trim() || '#47dfeb'
+      row.animate([
+        { backgroundColor: `color-mix(in srgb, ${accent} 21%, transparent)`, boxShadow: `inset 2px 0 ${accent}` },
+        { backgroundColor: 'transparent', boxShadow: 'inset 2px 0 transparent' },
+      ], { id: 'feed-pulse', duration: 420, easing: 'ease-out' })
+    }
+  }, [feed, run.id, seq])
+}
 
 export function CandidatePanel({ run }: { run: Run }) {
   const [inspectedId, setInspectedId] = useState<string>()
@@ -53,6 +79,7 @@ export function TerminalPanel({ run }: { run: Run }) {
   const [task, setTask] = useState('all')
   const [follow, setFollow] = useState(true)
   const scroller = useRef<HTMLOListElement>(null)
+  useFeedPulse(run, scroller)
   const availableTasks = new Map<string, AgentId | undefined>()
   for (const event of run.events) {
     if (event.taskId) availableTasks.set(event.taskId, event.agent)
@@ -63,7 +90,7 @@ export function TerminalPanel({ run }: { run: Run }) {
     && (selectedTask === 'all' || event.taskId === selectedTask))
   const lastSeq = visibleEvents.at(-1)?.seq
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (follow && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight
   }, [follow, lastSeq, level, agent, selectedTask])
 
@@ -88,8 +115,11 @@ export function TerminalPanel({ run }: { run: Run }) {
       </select>
       <button type="button" className="cp-follow" aria-pressed={follow} onClick={() => setFollow(value => !value)}><CircleDot size={12} />跟随最新</button>
     </div>
-    <ol className="cp-terminal-log" ref={scroller} aria-label="工作流事件历史" tabIndex={0}>
-      {visibleEvents.map(event => <li key={event.seq} className={`cp-event cp-event-${event.level}`}>
+    <ol className="cp-terminal-log" ref={scroller} aria-label="工作流事件历史" tabIndex={0} onScroll={event => {
+      const list = event.currentTarget
+      if (follow && list.scrollHeight - list.clientHeight - list.scrollTop > 8) setFollow(false)
+    }}>
+      {visibleEvents.map(event => <li key={event.seq} className={`cp-event cp-event-${event.level}`} data-feed-seq={event.seq}>
         <time dateTime={event.at}>{localTime(event.at)}</time>
         <span className="cp-event-level">{eventLevel[event.level]}</span>
         <span className="cp-event-role" style={{ color: event.agent && roles.get(event.agent)?.color }}>{event.agent ? roles.get(event.agent)?.name : '系统'}</span>
@@ -120,19 +150,27 @@ export function TrendPanel({ run }: { run: Run }) {
   const chart = { ...size, ...chartPadding }
   const sample = run.snapshots
   const active = sample.at(-1)
+  const previous = sample.at(-2)
+  const target = run.autoplay?.orderTarget ?? 0
+  const price = run.candidates.find(({ id }) => id === run.selectedId)?.price ?? 0
   const firstSeq = sample[0]?.seq ?? 0
-  const seqRange = Math.max(1, (active?.seq ?? firstSeq) - firstSeq)
+  // Leave room for one budget update and the creation and fulfillment of each order.
+  const range = target ? Math.max(target * 2 + 1, sample.length - 1) : Math.max(1, (active?.seq ?? firstSeq) - firstSeq)
   const highest = Math.max(0, ...sample.flatMap(point => [point.gmv, point.cost]))
-  const scale = Math.max(100, Math.ceil(highest / 5000) * 5000)
+  const scale = Math.max(100, Math.ceil(Math.max(highest, target * price) / 5000) * 5000)
   const baseline = chart.height - chart.bottom
-  const x = (seq: number) => chart.left + (seq - firstSeq) / seqRange * (chart.width - chart.left - chart.right)
+  const x = (seq: number, index: number) => chart.left + (target ? index : seq - firstSeq) / range * (chart.width - chart.left - chart.right)
   const y = (cents: number) => baseline - cents / scale * (baseline - chart.top)
-  const pointsFor = (field: 'gmv' | 'cost') => sample.map((point, index) => {
-    const left = x(point.seq)
+  const segment = (field: 'gmv' | 'cost', index: number) => {
+    const point = sample[index]
+    const left = x(point.seq, index)
     return index === 0 ? `${left},${y(point[field])}` : `${left},${y(sample[index - 1][field])} ${left},${y(point[field])}`
-  }).join(' ')
+  }
+  const pointsFor = (field: 'gmv' | 'cost') => sample.map((_, index) => segment(field, index)).join(' ')
   const gmvPoints = pointsFor('gmv')
-  const marks = highest ? [scale, scale / 2, 0] : [0]
+  const marks = scale > 100 ? [scale, scale / 2, 0] : [0]
+  const lastIndex = sample.length - 1
+  const activeX = active ? x(active.seq, lastIndex) : chart.left
 
   return <section className="cockpit-panel trend-panel" aria-label="模拟业绩趋势">
     <div className="cp-head">
@@ -152,13 +190,19 @@ export function TrendPanel({ run }: { run: Run }) {
           <text x={chart.left - 8} y={y(mark) + 4} textAnchor="end">{mark / 100}</text>
         </g>)}
         {active && <>
-          <polygon points={`${chart.left},${baseline} ${gmvPoints} ${x(active.seq)},${baseline}`} fill={`url(#${gradientId})`} />
+          <polygon points={`${chart.left},${baseline} ${gmvPoints} ${activeX},${baseline}`} fill={`url(#${gradientId})`} />
           <polyline points={pointsFor('cost')} className="cp-chart-cost" />
           <polyline points={gmvPoints} className="cp-chart-gmv" />
-          <circle cx={x(active.seq)} cy={y(active.gmv)} r="4" className="cp-chart-point" />
+          {previous && <g key={`${run.id}-${active.seq}`} aria-hidden="true">
+            {(['gmv', 'cost'] as const).filter(field => active[field] !== previous[field]).map(field => <g key={field}>
+              <polyline className={`cp-chart-flash cp-chart-flash-${field}`} pathLength="1" points={`${x(previous.seq, lastIndex - 1)},${y(previous[field])} ${segment(field, lastIndex)}`} />
+              <circle cx={activeX} cy={y(active[field])} r="4" className={`cp-chart-ripple cp-chart-flash-${field}`} />
+            </g>)}
+          </g>}
+          <circle cx={activeX} cy={y(active.gmv)} r="3.5" className="cp-chart-point" />
         </>}
         <text x={chart.left} y={chart.height - 7}>#{String(firstSeq).padStart(3, '0')}</text>
-        <text x={chart.width - chart.right} y={chart.height - 7} textAnchor="end">{active && active.seq !== firstSeq ? `#${String(active.seq).padStart(3, '0')}` : '事件序号'}</text>
+        {active && activeX - chart.left > 66 && <text x={activeX} y={chart.height - 7} textAnchor="end">#{String(active.seq).padStart(3, '0')}</text>}
       </svg>
       {!highest && <div className="cp-chart-empty">{sample.length ? '等待首笔模拟交易' : '启动任务后记录业绩'}</div>}
     </div>
@@ -166,14 +210,42 @@ export function TrendPanel({ run }: { run: Run }) {
 }
 
 export function OrderPanel({ run }: { run: Run }) {
+  const scroller = useRef<HTMLDivElement>(null)
+  const [pin, setPin] = useState<{ runId: string; ids: string[] }>()
+  useFeedPulse(run, scroller)
+  const pinned = pin?.runId === run.id ? pin.ids : undefined
+  const activity = (order: Order) => order.events.at(-1)?.seq ?? 0
+  const orders = run.autoplay ? [...run.orders] : run.orders
+  if (run.autoplay && pinned) {
+    const positions = new Map(pinned.map((id, index) => [id, index]))
+    orders.sort((a, b) => (positions.get(a.id) ?? pinned.length) - (positions.get(b.id) ?? pinned.length))
+  } else if (run.autoplay) {
+    orders.sort((a, b) => activity(b) - activity(a))
+  }
+  const shipped = orders.filter(order => order.status === 'shipped').length
+  const refunded = orders.filter(order => order.status === 'refunded').length
+
+  function keepOrderWhileBrowsing() {
+    const list = scroller.current
+    if (!run.autoplay || !list) return
+    const browsing = list.scrollTop > 6 || list.matches(':focus-within') || list.querySelector('details[open]')
+    setPin(previous => browsing
+      ? previous?.runId === run.id ? previous : { runId: run.id, ids: orders.map(order => order.id) }
+      : undefined)
+  }
+
   return <section className="cockpit-panel order-panel" aria-label="模拟订单">
     <div className="cp-head">
       <h2><Box size={15} />模拟订单</h2>
-      <span className="cp-head-note">{run.orders.length} 笔</span>
+      <span className="cp-head-note cp-order-tallies">{orders.length} 笔{run.autoplay && <>
+        {shipped > 0 && <span className="cp-gain">{shipped} 已发货</span>}
+        {refunded > 0 && <span className="cp-danger">{refunded} 已退款</span>}
+      </>}</span>
     </div>
-    {run.orders.length === 0 ? <div className="cp-empty cp-order-empty"><Box size={24} strokeWidth={1.25} /><span>等待模拟订单生成</span></div> : <div className="cp-orders">
-      {run.orders.map(order => <details key={order.id}>
-        <summary>
+    {orders.length === 0 ? <div className="cp-empty cp-order-empty"><Box size={24} strokeWidth={1.25} /><span>等待模拟订单生成</span></div> : <div className="cp-orders" ref={scroller}
+      data-follow={Boolean(run.autoplay && !pinned)} onFocus={keepOrderWhileBrowsing} onBlur={keepOrderWhileBrowsing} onScroll={keepOrderWhileBrowsing}>
+      {orders.map(order => <details key={order.id} onToggle={keepOrderWhileBrowsing}>
+        <summary className={`cp-order-${order.status}`} data-feed-seq={activity(order) || undefined}>
           <span className="cp-order-ref"><code>{order.id}</code><small>{order.sku}</small></span>
           <span className={`cp-pill cp-order-${order.status}`}>{orderStatus[order.status]}</span>
           <strong>{money(order.amount)}</strong><ChevronRight size={13} />

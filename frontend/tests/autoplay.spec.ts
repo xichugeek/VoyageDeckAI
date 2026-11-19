@@ -23,7 +23,7 @@ async function advanceUntil(page: Page, target: Locator, maxMilliseconds: number
   await expect(target).toBeVisible()
 }
 
-test('默认升级旧暂停检查点，逐笔生成订单，暂停后按同一进度继续并自动换轮', async ({ page }) => {
+test('默认演示快速逐笔下单、暂停冻结、恢复履约，并在下一情景逐笔退款', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.addInitScript(checkpoint => {
     sessionStorage.setItem('voyagedeck-demo-v1', JSON.stringify(checkpoint))
@@ -37,7 +37,7 @@ test('默认升级旧暂停检查点，逐笔生成订单，暂停后按同一�
   await expect(gmv(page, '$0.00')).toBeVisible()
   await expect(orders(page).locator('summary')).toHaveCount(0)
   const initialEvents = await log(page).getByRole('listitem').count()
-  await advanceUntil(page, gmv(page, '$49.00'), 12_000)
+  await advanceUntil(page, gmv(page, '$49.00'), 1800)
   await expect(orders(page).locator('summary')).toHaveCount(1)
   await expect(trend(page).getByRole('img', { name: /模拟 GMV \$49\.00/ })).toBeVisible()
   await expect(metrics(page).getByRole('button', { name: /模拟广告支出 \$26\.80/ })).toBeVisible()
@@ -51,13 +51,23 @@ test('默认升级旧暂停检查点，逐笔生成订单，暂停后按同一�
   expect(await log(page).getByRole('listitem').allTextContents()).toEqual(frozenEvents)
 
   await page.getByRole('button', { name: '继续演示', exact: true }).click()
-  await advanceUntil(page, gmv(page, '$98.00'), 8_000)
+  await advanceUntil(page, gmv(page, '$98.00'), 800)
   await expect(orders(page).locator('summary')).toHaveCount(2)
   await expect(trend(page).getByRole('img', { name: /模拟 GMV \$98\.00/ })).toBeVisible()
-  await advanceUntil(page, page.getByRole('button', { name: '查看复盘', exact: true }), 15_000)
-  await expect(orders(page).getByText('已发货', { exact: true })).toHaveCount(2)
-  await advanceUntil(page, page.locator('.hero').getByText('低毛利换品', { exact: true }), 20_000)
+  await advanceUntil(page, gmv(page, '$588.00'), 4500)
+  await expect(orders(page).locator('summary')).toHaveCount(12)
+  const shipped = orders(page).getByText('已发货', { exact: true })
+  await advanceUntil(page, shipped.first(), 1600)
+  await expect(shipped).toHaveCount(1)
+  const report = page.getByRole('button', { name: '查看复盘', exact: true })
+  await advanceUntil(page, report, 5000)
+  await expect(shipped).toHaveCount(12)
+  await advanceUntil(page, page.locator('.hero').getByText('低毛利换品', { exact: true }), 3100)
   await expect(gmv(page, '$0.00')).toBeVisible()
+  await advanceUntil(page, report, 15_000)
+  await expect(gmv(page, '$420.00')).toBeVisible()
+  await expect(shipped).toHaveCount(8)
+  await expect(orders(page).getByText('已退款', { exact: true })).toHaveCount(2)
   expect(writes).toEqual([])
 })
 

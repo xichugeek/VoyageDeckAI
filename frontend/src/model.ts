@@ -123,7 +123,7 @@ export interface Run {
   failure?: string
   checkpoint?: boolean
   singleStep?: boolean
-  autoplay?: { paused: boolean }
+  autoplay?: { paused: boolean; orderTarget?: number }
 }
 export interface Metrics {
   gmv: number
