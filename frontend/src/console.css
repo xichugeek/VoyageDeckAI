@@ -288,6 +288,10 @@ code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums;
   .node-orbit { grid-column: 1 / -1; }
   .flow-node strong { justify-self: end; }
   .flow-node small { align-self: center; justify-self: start; }
+  .agent-card { gap: 1px; padding-block: 4px; }
+  .role-icon { width: 22px; height: 22px; }
+  .agent-action { line-height: 16px; }
+  .agent-footer { line-height: 14px; }
 }
 
 @media (min-width: 1280px) and (min-height: 760px) and (max-height: 790px) {

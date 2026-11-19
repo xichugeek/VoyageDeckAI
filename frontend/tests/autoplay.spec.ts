@@ -81,6 +81,10 @@ for (const [width, height] of [[1366, 768], [1440, 810], [1440, 900], [1704, 922
     ]
     await expect(page.locator('.agent-card')).toHaveCount(6)
     for (const panel of panels) await expect(panel).toBeInViewport({ ratio: 0.99 })
+    const summariesFit = await page.locator('.agent-action').evaluateAll(elements =>
+      elements.every(element => element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + 1),
+    )
+    expect(summariesFit).toBe(true)
     const pageOverflow = await page.evaluate(() => {
       const root = document.documentElement
       return root.scrollWidth > root.clientWidth + 1 || root.scrollHeight > root.clientHeight + 1
