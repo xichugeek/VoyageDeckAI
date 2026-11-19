@@ -18,7 +18,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 test('桌面键盘支持跳转主区、导航锚点和可见焦点', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/?mode=manual')
 
   const skip = page.getByRole('link', { name: '跳转到指挥台' })
   await page.keyboard.press('Tab')
@@ -48,7 +48,7 @@ test('桌面键盘支持跳转主区、导航锚点和可见焦点', async ({ pa
 test('手机键盘可开关表单、恢复焦点并访问第六个流程节点', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/?mode=manual')
   await expectNoHorizontalOverflow(page)
 
   const launch = page.getByRole('button', { name: '新建出海任务' })
@@ -79,7 +79,7 @@ test('手机键盘可开关表单、恢复焦点并访问第六个流程节点',
 
 test('降低动态效果时保留运行状态反馈', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/?mode=manual')
   await page.getByRole('button', { name: '重置沙盒' }).click()
   await page.getByRole('button', { name: '确认重置' }).click()
   await page.getByRole('button', { name: '启动演示' }).click()
@@ -100,7 +100,7 @@ test('降低动态效果时保留运行状态反馈', async ({ page }) => {
 })
 
 test('320px 与平板版无页面横向溢出', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/?mode=manual')
   for (const viewport of [{ width: 320, height: 720 }, { width: 1024, height: 768 }]) {
     await page.setViewportSize(viewport)
     await expectNoHorizontalOverflow(page)

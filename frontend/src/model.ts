@@ -84,7 +84,7 @@ export interface Approval {
   id?: string
   attempt?: number
   outputId?: string
-  actor?: 'sandbox_visitor'
+  actor?: 'sandbox_visitor' | 'sandbox_autoplay'
 }
 export interface Task {
   id: string
@@ -123,6 +123,7 @@ export interface Run {
   failure?: string
   checkpoint?: boolean
   singleStep?: boolean
+  autoplay?: { paused: boolean }
 }
 export interface Metrics {
   gmv: number
@@ -142,7 +143,7 @@ export interface Metrics {
   working: number
 }
 export type Action = { type: 'prepare' | 'start' | 'pause' | 'resume' | 'step' | 'tick' | 'cancel' | 'retry' }
-  | { type: 'approve' | 'reject'; taskId: string; attempt: number }
+  | { type: 'approve' | 'reject' | 'autoApprove'; taskId: string; attempt: number }
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 export const money = (cents: number) => dollars.format(cents / 100)

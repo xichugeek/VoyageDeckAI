@@ -101,10 +101,23 @@ export function TerminalPanel({ run }: { run: Run }) {
   </section>
 }
 
-const chart = { width: 600, height: 146, left: 48, right: 18, top: 14, bottom: 28 }
+const chartPadding = { left: 32, right: 12, top: 9, bottom: 18 }
 
 export function TrendPanel({ run }: { run: Run }) {
   const gradientId = useId()
+  const plot = useRef<SVGSVGElement>(null)
+  const [size, setSize] = useState({ width: 600, height: 135 })
+  useEffect(() => {
+    if (!plot.current) return
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width)
+      const height = Math.round(entry.contentRect.height)
+      if (width && height) setSize(current => current.width === width && current.height === height ? current : { width, height })
+    })
+    observer.observe(plot.current)
+    return () => observer.disconnect()
+  }, [])
+  const chart = { ...size, ...chartPadding }
   const sample = run.snapshots
   const active = sample.at(-1)
   const firstSeq = sample[0]?.seq ?? 0
@@ -128,7 +141,7 @@ export function TrendPanel({ run }: { run: Run }) {
     </div>
     <div className="cp-chart-legend"><span><i />GMV <strong>{money(active?.gmv ?? 0)}</strong></span><span><i />累计成本 <strong>{money(active?.cost ?? 0)}</strong></span></div>
     <div className="cp-chart-wrap">
-      <svg className="cp-chart" viewBox={`0 0 ${chart.width} ${chart.height}`} role="img" aria-label={`按事件绘制的模拟 GMV ${money(active?.gmv ?? 0)}，累计成本 ${money(active?.cost ?? 0)}`}>
+      <svg ref={plot} className="cp-chart" viewBox={`0 0 ${chart.width} ${chart.height}`} role="img" aria-label={`按事件绘制的模拟 GMV ${money(active?.gmv ?? 0)}，累计成本 ${money(active?.cost ?? 0)}`}>
         <defs><linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1" gradientUnits="objectBoundingBox"><stop stopColor="#49dfea" stopOpacity=".25" /><stop offset="1" stopColor="#49dfea" stopOpacity=".015" /></linearGradient></defs>
         {[.25, .5, .75, 1].map(part => {
           const marker = chart.left + (chart.width - chart.left - chart.right) * part

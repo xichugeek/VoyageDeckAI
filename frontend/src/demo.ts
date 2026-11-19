@@ -87,7 +87,7 @@ export function metrics(run: Run): Metrics {
     gmv, count, refunds, net, procurement, shipping, fees, attributed, adSpend: run.adSpend,
     roas: run.adSpend === 0 ? null : attributed / run.adSpend, gross, margin: net === 0 ? null : gross / net,
     contribution: net - totalCost, totalCost,
-    working: run.status === 'running' ? run.tasks.filter(({ status }) => status === 'running').length : 0,
+    working: run.status === 'running' && !run.autoplay?.paused ? run.tasks.filter(({ status }) => status === 'running').length : 0,
   }
 }
 
@@ -163,18 +163,20 @@ function orderEvent(run: Run, task: Task, order: Order, at: string, kind: OrderE
   order.events.push({ at, message, kind, seq })
 }
 
-function createOrders(run: Run, product: Product, task: Task, at: string) {
+function recordSpend(run: Run, task: Task, at: string) {
   run.adSpend = plannedSpend(run.config)
   event(run, at, 'info', `记录模拟广告支出 ${money(run.adSpend)}`, task)
-  for (const index of [1, 2]) {
-    const order: Order = {
-      id: `SIM-${run.id.slice(0, 8).toUpperCase()}-0${index}`, sku: product.sku, status: 'created',
-      amount: product.price, refund: 0, productCost: product.cost, shipping: 0, platformFee: Math.round(product.price * 0.06),
-      attributed: index === 1 && run.adSpend > 0, units: 1, events: [], dataSource: source,
-    }
-    run.orders.push(order)
-    orderEvent(run, task, order, at, 'created', `创建模拟订单 · ${money(order.amount)}`, 'success')
+}
+
+function addOrder(run: Run, product: Product, task: Task, at: string) {
+  const index = run.orders.length + 1
+  const order: Order = {
+    id: `SIM-${run.id.slice(0, 8).toUpperCase()}-0${index}`, sku: product.sku, status: 'created',
+    amount: product.price, refund: 0, productCost: product.cost, shipping: 0, platformFee: Math.round(product.price * 0.06),
+    attributed: index === 1 && run.adSpend > 0, units: 1, events: [], dataSource: source,
   }
+  run.orders.push(order)
+  orderEvent(run, task, order, at, 'created', `创建模拟订单 · ${money(order.amount)}`, 'success')
 }
 
 function fulfill(run: Run, task: Task, at: string) {
@@ -297,13 +299,15 @@ function accepts(run: Run, action: Action): boolean {
     case 'pause': return run.status === 'running'
     case 'resume': return run.status === 'paused'
     case 'step': return run.status === 'paused' || run.status === 'ready'
-    case 'tick': return run.status === 'running'
+    case 'tick': return run.status === 'running' && !run.autoplay?.paused
     case 'cancel': return !terminal.has(run.status) || canRetry(run)
     case 'retry': return canRetry(run)
     case 'approve':
     case 'reject':
+    case 'autoApprove':
       return run.status === 'awaiting_approval' && task?.status === 'awaiting_approval'
         && task.id === action.taskId && task.attempts === action.attempt
+        && (action.type === 'autoApprove' ? !!run.autoplay && !run.autoplay.paused : !run.autoplay)
   }
 }
 
@@ -344,7 +348,18 @@ export function reduceRun(run: Run, action: Action, now = Date.now()): Run {
       finish(next, task, at)
       break
     case 'tick':
-      if (task.progress === 25) task.progress = 60
+      if (next.autoplay && task.agent === 'ads' && task.progress === 90) {
+        const product = next.candidates.find(({ id }) => id === next.selectedId)
+        if (!product) {
+          fail(next, task, at, '缺少已批准的候选商品')
+          break
+        }
+        addOrder(next, product, task, at)
+        if (next.orders.length === 2) {
+          task.summary = '两笔模拟订单已写入'
+          succeed(next, task, at)
+        } else task.summary = '首笔模拟订单已写入'
+      } else if (task.progress === 25) task.progress = 60
       else finish(next, task, at)
       break
     case 'cancel':
@@ -368,25 +383,64 @@ export function reduceRun(run: Run, action: Action, now = Date.now()): Run {
       begin(next, task, at)
       break
     case 'approve':
+    case 'autoApprove':
     case 'reject': {
-      const decision = action.type === 'approve' ? 'approved' : 'rejected'
+      const automatic = action.type === 'autoApprove'
+      const decision = action.type === 'reject' ? 'rejected' : 'approved'
       next.approvals.push({
-        id: crypto.randomUUID(), taskId: task.id, decision, at, attempt: action.attempt, actor: 'sandbox_visitor', outputId: task.outputId,
+        id: crypto.randomUUID(), taskId: task.id, decision, at, attempt: action.attempt,
+        actor: automatic ? 'sandbox_autoplay' : 'sandbox_visitor', outputId: task.outputId,
       })
-      if (decision === 'rejected') {
+      if (action.type === 'reject') {
         fail(next, task, at, '人工驳回 · 任务已停止，审批记录已保留')
         break
       }
-      event(next, at, 'success', '人工批准 · 模拟审批已留痕', task)
+      event(next, at, 'success', automatic ? '轮播自动批准 · 模拟审批已留痕' : '人工批准 · 模拟审批已留痕', task)
       const product = next.candidates.find(({ id }) => id === next.selectedId)
-      if (task.agent === 'ads' && product) createOrders(next, product, task, at)
       next.status = next.singleStep ? 'paused' : 'running'
+      if (task.agent === 'ads' && product) {
+        recordSpend(next, task, at)
+        if (automatic) {
+          task.status = 'running'
+          task.progress = 90
+          task.summary = '已批准模拟预算 · 等待订单进入'
+          break
+        }
+        addOrder(next, product, task, at)
+        addOrder(next, product, task, at)
+      }
       task.summary = task.agent === 'ads' ? '已批准模拟预算 · 两笔模拟订单' : '已批准商品草稿 · 模拟审核'
       succeed(next, task, at)
       break
     }
   }
   return next
+}
+
+function startAutomaticRun(config: Partial<Config>, now: number) {
+  return reduceRun({ ...createRun(config, now), autoplay: { paused: false } }, { type: 'start' }, now)
+}
+
+export function advanceAutomaticRun(run: Run, now = Date.now()): Run {
+  if (!run.autoplay || run.autoplay.paused) return run
+  if (run.status === 'running') return reduceRun(run, { type: 'tick' }, now)
+  if (run.status === 'awaiting_approval') {
+    const task = run.tasks[run.activeIndex]
+    return reduceRun(run, { type: 'autoApprove', taskId: task.id, attempt: task.attempts }, now)
+  }
+  if (run.status === 'completed') {
+    return startAutomaticRun({ scenario: run.config.scenario === 'standard' ? 'fallback' : 'standard' }, now)
+  }
+  return run
+}
+
+export function openAutomaticDemo(now = Date.now()): Run {
+  // Enter the first round at the live advertising stage, ahead of the first order.
+  let run = startAutomaticRun({ scenario: 'standard' }, now - 7000)
+  for (let step = 1; step <= 7; step += 1) {
+    run = advanceAutomaticRun(run, now - (7 - step) * 1000)
+  }
+  return run
 }
 
 export function previewRun(): Run {

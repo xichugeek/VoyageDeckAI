@@ -9,7 +9,7 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [390, 844]]) {
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
     await page.setViewportSize({ width, height })
-    await page.goto('/')
+    await page.goto('/?mode=manual')
     await expect(page.getByRole('heading', { name: '出海运营指挥台' })).toBeVisible()
     await expect(page.locator('.flow-node')).toHaveCount(6)
     await expect(page.locator('.agent-card')).toHaveCount(6)

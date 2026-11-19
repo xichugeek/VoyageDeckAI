@@ -51,7 +51,7 @@ async function captureState(page: Page, name: string) {
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize(viewport)
   await page.clock.install({ time: new Date('2026-11-19T04:00:00Z') })
-  await page.goto('/')
+  await page.goto('/?mode=manual')
   await expect(page.getByRole('heading', { name: '出海运营指挥台' })).toBeVisible()
 })
 
@@ -213,7 +213,7 @@ test('驳回、取消、重置和刷新均保持会话隔离', async ({ page, br
   const visitor = await browser.newContext()
   try {
     const privatePage = await visitor.newPage()
-    await privatePage.goto(new URL('/', page.url()).href)
+    await privatePage.goto(new URL('/?mode=manual', page.url()).href)
     await expect(metric(privatePage, /模拟成交总额 \$98\.00/)).toBeVisible()
     await createTask(page)
     await page.getByRole('button', { name: '取消任务', exact: true }).click()

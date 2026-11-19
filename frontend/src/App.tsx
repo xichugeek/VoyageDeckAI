@@ -1,25 +1,33 @@
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, ChevronRight, CircleCheck, Clipboard, Coins, Globe2, Layers3, Pause, Play, Plus, RotateCcw, Settings, ShoppingBag, SkipForward, Square, Timer, TrendingUp, TriangleAlert, Wallet } from 'lucide-react'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { CandidatePanel, OrderPanel, TerminalPanel, TrendPanel } from './CockpitPanels'
-import { canRetry, createRun, metrics, previewRun, products, reduceRun } from './demo'
+import { advanceAutomaticRun, canRetry, createRun, metrics, openAutomaticDemo, previewRun, products, reduceRun } from './demo'
 import { agents, localTime, markets, money, percent, runStatusLabel, scenarios, taskStatusLabel } from './model'
 import type { Action, Config, Run, Task } from './model'
 import { Dialog, Logo, PanelTitle, Radar, RoleIcon, tint } from './ui'
 
-const sessionKey = 'voyagedeck-demo-v1'
+const legacySessionKey = 'voyagedeck-demo-v1'
+const manualEntry = new URLSearchParams(window.location.search).get('mode') === 'manual'
+const sessionKey = manualEntry ? legacySessionKey : 'voyagedeck-demo-v2'
 const stepMs = 1150
 const AdminBoard = lazy(() => import('./AdminBoard').then(module => ({ default: module.AdminBoard })))
 
 function initialRun(): Run {
   try {
-    const saved = sessionStorage.getItem(sessionKey)
+    const current = sessionStorage.getItem(sessionKey)
+    const saved = current ?? (!manualEntry ? sessionStorage.getItem(legacySessionKey) : null)
     if (saved) {
       const run = JSON.parse(saved) as Run
-      if (run.mode === 'demo_simulated' && run.tasks.length === agents.length) return run
+      if (run.mode === 'demo_simulated' && run.tasks.length === agents.length
+        && (manualEntry ? !run.autoplay : (current !== null || !run.checkpoint))) return run
     }
   } catch { /* The sandbox can also run in memory. */ }
-  return previewRun()
+  return manualEntry ? previewRun() : openAutomaticDemo()
+}
+
+function isPaused(run: Run) {
+  return run.status === 'paused' || run.autoplay?.paused === true
 }
 
 function useClock() {
@@ -39,27 +47,32 @@ function Header({ run, openAdmin }: { run: Run; openAdmin: () => void }) {
       <nav className="topnav" aria-label="主导航"><a href="#overview" className="nav-current"><Layers3 size={15} /> 指挥台</a><a href="#flow">执行链路</a><a href="#telemetry">运行记录</a></nav>
       <div className="topbar-info"><span className="demo-mode"><i /> 演示沙盒</span><span className="top-time"><Timer size={14} /> {clock}</span><button className="btn icon-btn admin-link" onClick={openAdmin} title="管理后台" aria-label="管理后台"><Settings size={17} /></button></div>
     </div>
-    <div className="status-line"><div><span><span className="online-dot" /> 舰桥在线</span><span><Globe2 size={13} /> {markets[run.config.market]}市场 · USD</span></div><span className="mono">{run.id.slice(0, 8).toUpperCase()} <span className="status-line-divider">/</span> {run.checkpoint ? '演示检查点' : '当前会话'}</span></div>
+    <div className="status-line"><div><span><span className="online-dot" /> 舰桥在线</span><span><Globe2 size={13} /> {markets[run.config.market]}市场 · USD</span></div><span className="mono">{run.id.slice(0, 8).toUpperCase()} <span className="status-line-divider">/</span> {run.autoplay ? '自动轮播' : run.checkpoint ? '演示检查点' : '当前会话'}</span></div>
   </header>
 }
 
-function Hero({ run, dispatch, newTask, reset, report }: { run: Run; dispatch: (action: Action) => void; newTask: () => void; reset: () => void; report: () => void }) {
+function Hero({ run, dispatch, newTask, reset, report, toggleAutoplay, startAutoplay }: { run: Run; dispatch: (action: Action) => void; newTask: () => void; reset: () => void; report: () => void; toggleAutoplay: () => void; startAutoplay: () => void }) {
   const finished = ['completed', 'failed', 'canceled'].includes(run.status)
   const ready = ['draft', 'ready'].includes(run.status)
   const active = run.status === 'running'
-  const paused = run.status === 'paused'
-  return <section className="hero" id="overview" aria-labelledby="hero-title" data-status={run.status} tabIndex={-1}>
+  const paused = isPaused(run)
+  const status = paused ? 'paused' : run.status
+  const label = run.autoplay && status === 'awaiting_approval' ? '模拟审批中' : runStatusLabel[status]
+  return <section className="hero" id="overview" aria-labelledby="hero-title" data-status={status} tabIndex={-1}>
     <Radar />
     <div className="hero-content">
-      <div className="hero-heading"><span className="hero-code"><AudioLines size={15} /> MISSION CONTROL</span><span className="run-badge" data-status={run.status}><i /> {runStatusLabel[run.status]}</span></div>
+      <div className="hero-heading"><span className="hero-code"><AudioLines size={15} /> MISSION CONTROL</span><span className="run-badge" data-status={status}><i /> {label}</span></div>
       <h1 id="hero-title">出海运营指挥台</h1>
-      <p><strong>{scenarios[run.config.scenario]}</strong> <span>·</span> {run.config.category} <span>·</span> 全链路模拟</p>
+      <p><strong>{scenarios[run.config.scenario]}</strong> <span>·</span> {run.config.category} <span>·</span> {run.autoplay ? '自动轮播 · 模拟审批' : '全链路模拟'}</p>
       <div className="hero-actions">
         <button className="btn btn-primary" onClick={newTask}><Plus size={17} /> 新建出海任务</button>
-        {ready && <button className="btn" onClick={() => dispatch({ type: 'start' })}><Play size={16} /> 启动演示</button>}
-        {active && <button className="btn" onClick={() => dispatch({ type: 'pause' })}><Pause size={16} /> 暂停</button>}
-        {paused && <button className="btn" onClick={() => dispatch({ type: 'resume' })}><Play size={16} /> 继续演示</button>}
-        {!finished && <button className="btn icon-btn" title="单步执行" aria-label="单步执行" disabled={!paused && !ready} onClick={() => dispatch({ type: 'step' })}><SkipForward size={17} /></button>}
+        {run.autoplay ? <button className="btn" onClick={toggleAutoplay}>{paused ? <><Play size={16} /> 继续演示</> : <><Pause size={16} /> 暂停</>}</button> : <>
+          {ready && <button className="btn" onClick={() => dispatch({ type: 'start' })}><Play size={16} /> 启动演示</button>}
+          {active && <button className="btn" onClick={() => dispatch({ type: 'pause' })}><Pause size={16} /> 暂停</button>}
+          {paused && <button className="btn" onClick={() => dispatch({ type: 'resume' })}><Play size={16} /> 继续演示</button>}
+          {!finished && <button className="btn icon-btn" title="单步执行" aria-label="单步执行" disabled={!paused && !ready} onClick={() => dispatch({ type: 'step' })}><SkipForward size={17} /></button>}
+          <button className="btn icon-btn" title="开启自动轮播" aria-label="开启自动轮播" onClick={startAutoplay}><Activity size={17} /></button>
+        </>}
         <button className="btn icon-btn" title="重置沙盒" aria-label="重置沙盒" onClick={reset}><RotateCcw size={17} /></button>
         {finished && <button className="btn" onClick={report}><Clipboard size={16} /> 查看复盘</button>}
       </div>
@@ -112,7 +125,7 @@ function LiveFlow({ run, inspect }: { run: Run; inspect: (task: Task) => void })
     <div className="flow-scroll"><ol className="flow-steps">
       {run.tasks.map((task, index) => {
         const agent = agents[index]
-        const label = task.status === 'running' && run.status === 'paused' ? '已暂停' : taskStatusLabel[task.status]
+        const label = task.status === 'running' && isPaused(run) ? '已暂停' : taskStatusLabel[task.status]
         const number = String(index + 1).padStart(2, '0')
         return <li key={task.id} data-state={task.status} style={tint(agent.color)}>
           <button className="flow-node" onClick={() => inspect(task)} aria-label={`${number} ${agent.name} ${label}，查看详情`}>
@@ -133,7 +146,7 @@ function AgentRoster({ run, inspect }: { run: Run; inspect: (task: Task) => void
     <div className="roster-list">{run.tasks.map((task, index) => {
       const agent = agents[index]
       return <button className="agent-card" data-state={task.status} key={task.id} style={tint(agent.color)} onClick={() => inspect(task)}>
-        <span className="agent-line"><span className="role-icon"><RoleIcon agent={agent.id} size={18} /></span><strong>{agent.name}<small>{agent.label}</small></strong><span className="agent-status"><i /> {task.status === 'running' && run.status === 'paused' ? '已暂停' : taskStatusLabel[task.status]}</span></span>
+        <span className="agent-line"><span className="role-icon"><RoleIcon agent={agent.id} size={18} /></span><strong>{agent.name}<small>{agent.label}</small></strong><span className="agent-status"><i /> {task.status === 'running' && isPaused(run) ? '已暂停' : taskStatusLabel[task.status]}</span></span>
         <span className="agent-action" title={task.summary || agent.action}>{task.summary || agent.action}</span>
         <span className="agent-footer"><span className="agent-progress"><i style={{ width: `${task.progress}%` }} /></span><span>{task.processed} {agent.unit}</span></span>
       </button>
@@ -219,13 +232,13 @@ function TaskDetails({ run, task }: { run: Run; task: Task }) {
   const approvals = run.approvals.filter(item => item.taskId === task.id)
   const duration = task.startedAt ? Math.max(0, (Date.parse(task.endedAt || run.updatedAt) - Date.parse(task.startedAt)) / 1000) : undefined
   return <div className="drawer-content">
-    <div className="detail-meta"><span>{task.status === 'running' && run.status === 'paused' ? '已暂停' : taskStatusLabel[task.status]}</span><span>尝试 {task.attempts} 次</span><span>{duration === undefined ? '待执行' : `${duration.toFixed(1)} 秒`}</span><code>{task.id}</code></div>
+    <div className="detail-meta"><span>{task.status === 'running' && isPaused(run) ? '已暂停' : taskStatusLabel[task.status]}</span><span>尝试 {task.attempts} 次</span><span>{duration === undefined ? '待执行' : `${duration.toFixed(1)} 秒`}</span><code>{task.id}</code></div>
     <p>{task.summary || '等待前序岗位完成。'} {task.failure}</p>
     {task.input && <Output data={task.input} label="执行输入" />}
     {task.output && <><Output data={task.output} label="模拟产物" /><CopyButton label="复制产物" text={JSON.stringify(task.output, null, 2)} /></>}
     {!!task.attemptHistory?.length && <><h3>执行尝试</h3><ul className="detail-log">{task.attemptHistory.map(attempt => <li key={attempt.number}>第 {attempt.number} 次 · <time>{localTime(attempt.startedAt)}</time> · {attempt.failure || (attempt.endedAt ? '已结束' : '尚未结束')}</li>)}</ul></>}
     <h3>岗位日志</h3><ul className="detail-log">{run.events.filter(evt => evt.taskId === task.id).map(evt => <li key={evt.seq}><time>{localTime(evt.at)}</time> {evt.message}</li>)}</ul>
-    {!!approvals.length && <><h3>审批记录</h3><ul className="detail-log">{approvals.map((entry, index) => <li key={entry.id || index}><time>{localTime(entry.at)}</time> {entry.decision === 'approved' ? '批准' : '驳回'}模拟产物{entry.attempt && ` · 第 ${entry.attempt} 次尝试`}</li>)}</ul></>}
+    {!!approvals.length && <><h3>审批记录</h3><ul className="detail-log">{approvals.map((entry, index) => <li key={entry.id || index}><time>{localTime(entry.at)}</time> {entry.actor === 'sandbox_autoplay' ? '轮播自动' : ''}{entry.decision === 'approved' ? '批准' : '驳回'}模拟产物{entry.attempt && ` · 第 ${entry.attempt} 次尝试`}</li>)}</ul></>}
   </div>
 }
 
@@ -258,7 +271,7 @@ function Report({ run }: { run: Run }) {
       const timing = task.startedAt && task.endedAt ? `${((Date.parse(task.endedAt) - Date.parse(task.startedAt)) / 1000).toFixed(1)} 秒` : '未结束'
       return `\n${agents[index].name} · ${taskStatusLabel[task.status]} · ${timing} · 尝试 ${task.attempts} 次\n${task.failure || task.summary || ''}\n输入 ${JSON.stringify(task.input ?? {})}\n输出 ${JSON.stringify(task.output ?? {})}`
     }),
-    '\n人工审批', ...run.approvals.map(entry => `${entry.at} · ${entry.taskId} · ${entry.decision === 'approved' ? '批准' : '驳回'}`),
+    run.autoplay ? '\n轮播模拟审批' : '\n人工审批', ...run.approvals.map(entry => `${entry.at} · ${entry.taskId} · ${entry.actor === 'sandbox_autoplay' ? '轮播自动' : ''}${entry.decision === 'approved' ? '批准' : '驳回'}`),
     '\n风险与异常', ...run.events.filter(evt => evt.level === 'warn' || evt.level === 'error').map(evt => `${evt.at} · ${evt.message}`),
   ].join('\n')
   return <><MetricDetails run={run} /><div className="dialog-actions"><CopyButton label="复制复盘" text={report} /><button className="btn" onClick={() => download(report, `voyagedeck-${run.id.slice(0, 8)}.txt`)}><ArrowDownToLine size={16} /> 下载复盘</button></div><pre className="report-text">{report}</pre></>
@@ -272,16 +285,32 @@ export function App() {
   const [inspected, setInspected] = useState<string | null>(null)
   const [historical, setHistorical] = useState<Run | null>(null)
   const [history, setHistory] = useState<Run[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(`${sessionKey}-history`) ?? '[]') as Run[] } catch { return [] }
+    try { return JSON.parse(sessionStorage.getItem(`${sessionKey}-history`) ?? sessionStorage.getItem(`${legacySessionKey}-history`) ?? '[]') as Run[] } catch { return [] }
   })
+  const archive = useCallback((item: Run) => {
+    setHistory(items => [item, ...items.filter(previous => previous.id !== item.id)].slice(0, 12))
+  }, [])
   useEffect(() => {
     try { sessionStorage.setItem(sessionKey, JSON.stringify(run)) } catch { /* Keep using the live state. */ }
   }, [run])
   useEffect(() => {
-    if (run.status !== 'running') return
+    if (run.status !== 'running' || run.autoplay) return
     const timer = window.setInterval(() => setRun(current => reduceRun(current, { type: 'tick' })), stepMs)
     return () => window.clearInterval(timer)
-  }, [run.status])
+  }, [run.status, run.autoplay])
+  useEffect(() => {
+    try { sessionStorage.setItem(`${sessionKey}-history`, JSON.stringify(history)) } catch { /* Keep the in-memory archive. */ }
+  }, [history])
+  useEffect(() => {
+    if (!run.autoplay || run.autoplay.paused || view || inspected) return
+    const delay = run.status === 'completed' ? 8500 : run.status === 'awaiting_approval' ? 1300 : 1000
+    const timer = window.setTimeout(() => {
+      const next = advanceAutomaticRun(run)
+      if (next.id !== run.id) archive(run)
+      setRun(current => current === run ? next : current)
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [run, view, inspected, archive])
 
   const dispatch = (action: Action) => setRun(current => reduceRun(current, action))
   const close = () => { setView(null); setInspected(null); setHistorical(null) }
@@ -289,15 +318,15 @@ export function App() {
   const selectedTask = run.tasks.find(task => task.id === inspected)
   const approval = run.status === 'awaiting_approval' ? run.tasks[run.activeIndex] : undefined
   const activeTask = run.tasks[run.activeIndex]
-  const summary = run.failure || activeTask?.summary || '候选库已载入，等待任务启动。'
+  const summary = run.failure || (run.status === 'completed'
+    ? run.autoplay && !isPaused(run) ? '六岗位已完成，即将轮播下一情景。' : '六岗位已完成，可以查看任务复盘。'
+    : activeTask?.summary || '候选库已载入，等待任务启动。')
   const terminal = ['completed', 'failed', 'canceled'].includes(run.status)
 
   function replace(config: Config, preserve: boolean) {
     if (preserve) {
       const archived = run.status === 'running' ? reduceRun(run, { type: 'pause' }) : run
-      const next = [archived, ...history].slice(0, 12)
-      setHistory(next)
-      try { sessionStorage.setItem(`${sessionKey}-history`, JSON.stringify(next)) } catch { /* Keep the in-memory archive. */ }
+      archive(archived)
     }
     setRun(createRun(config))
     close()
@@ -317,16 +346,18 @@ export function App() {
     <a className="skip-link" href="#overview">跳转到指挥台</a>
     <Header run={run} openAdmin={() => setView('admin')} />
     <main className="console-layout">
-      <Hero run={run} dispatch={dispatch} newTask={() => setView('new')} reset={() => setView('reset')} report={() => setView('report')} />
+      <Hero run={run} dispatch={dispatch} newTask={() => setView('new')} reset={() => setView('reset')} report={() => setView('report')}
+        toggleAutoplay={() => setRun(current => current.autoplay ? { ...current, autoplay: { paused: !current.autoplay.paused } } : current)}
+        startAutoplay={() => { archive(run.status === 'running' ? reduceRun(run, { type: 'pause' }) : run); setRun(openAutomaticDemo()) }} />
       <MetricsRow run={run} inspect={() => setView('metrics')} />
       <div className="cockpit-grid">
         <div className="main-deck">
           <LiveFlow run={run} inspect={inspect} />
           <section className="decision-strip" data-status={run.status} aria-label="阶段决策" aria-live="polite">
             <span className="decision-icon">{approval || run.status === 'failed' ? <TriangleAlert size={17} /> : <Activity size={17} />}</span>
-            <div><strong>{approval ? (approval.agent === 'ads' ? '待审 · 模拟广告预算' : '待审 · 模拟上架草稿') : '阶段动态'}</strong><span>{summary}</span></div>
+            <div><strong>{approval ? (run.autoplay ? '轮播 · 模拟审批' : approval.agent === 'ads' ? '待审 · 模拟广告预算' : '待审 · 模拟上架草稿') : '阶段动态'}</strong><span>{summary}</span></div>
             <div className="decision-actions">
-              {approval && <><button className="btn" onClick={() => inspect(approval)}>查看产物</button><button className="btn btn-danger" onClick={() => dispatch({ type: 'reject', taskId: approval.id, attempt: approval.attempts })}>驳回</button><button className="btn btn-primary" onClick={() => dispatch({ type: 'approve', taskId: approval.id, attempt: approval.attempts })}>{approval.agent === 'ads' ? '批准模拟预算' : '批准模拟草稿'}</button></>}
+              {approval && <><button className="btn" onClick={() => inspect(approval)}>查看产物</button>{!run.autoplay && <><button className="btn btn-danger" onClick={() => dispatch({ type: 'reject', taskId: approval.id, attempt: approval.attempts })}>驳回</button><button className="btn btn-primary" onClick={() => dispatch({ type: 'approve', taskId: approval.id, attempt: approval.attempts })}>{approval.agent === 'ads' ? '批准模拟预算' : '批准模拟草稿'}</button></>}</>}
               {canRetry(run) && <button className="btn btn-primary" onClick={() => dispatch({ type: 'retry' })}><RotateCcw size={15} /> 重试模拟岗位</button>}
               {run.status === 'failed' && <button className="btn" onClick={() => setView('report')}>查看失败复盘 <ArrowRight size={14} /></button>}
               {!terminal && !approval && activeTask && <button className="btn subtle-btn" onClick={() => inspect(activeTask)}>岗位详情 <ArrowRight size={14} /></button>}
@@ -338,7 +369,7 @@ export function App() {
         </div>
         <AgentRoster run={run} inspect={inspect} />
       </div>
-      <footer className="console-footer"><span><span className="online-dot" /> 模拟数据 · USD <span className="foot-mid">/</span> 当前浏览器会话</span><div><button className="btn" onClick={() => setView('history')}>任务历史</button>{(!terminal || canRetry(run)) && <button className="btn" onClick={() => setView('cancel')}><Square size={13} /> 取消任务</button>}<button className="btn" onClick={() => setView('report')}>运行记录</button></div></footer>
+      <footer className="console-footer"><span><span className="online-dot" /> 模拟数据 · USD <span className="foot-mid">/</span> 当前浏览器会话</span><div><button className="btn" onClick={() => setView('history')}>任务历史</button>{!run.autoplay && (!terminal || canRetry(run)) && <button className="btn" onClick={() => setView('cancel')}><Square size={13} /> 取消任务</button>}<button className="btn" onClick={() => setView('report')}>运行记录</button></div></footer>
     </main>
     {selectedTask && <Dialog title={`${agents.find(agent => agent.id === selectedTask.agent)?.name} · 岗位详情`} close={close} wide><TaskDetails run={run} task={selectedTask} /></Dialog>}
     {view && <Dialog title={titles[view]} close={close} wide={view === 'report' || view === 'admin'}>{modalContent}</Dialog>}
